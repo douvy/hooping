@@ -85,6 +85,27 @@ button:not(:disabled),
   cursor: pointer;
 }
 
+/* Verdict overlay entrance — the one CSS animation: a fade is UI chrome,
+   not game motion, so it doesn't go through the spring */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes verdict-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* House label style: tiny uppercase captions */
 .label {
   font-size: 10px;

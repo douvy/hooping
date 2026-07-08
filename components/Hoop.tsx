@@ -175,6 +175,8 @@ export function Hoop() {
   const madeRef = useRef(false);
   const bestDepthRef = useRef(0); // gates the new-deepest fanfare
   const eventAtRef = useRef(-Infinity); // joy hop / sad flinch clock
+  const leanAtRef = useRef(-Infinity); // rim-approach slow-mo clock
+  const inMouthRef = useRef(false); // edge-detects entry into rim airspace
   const kickAtRef = useRef(-Infinity);
   const phaseRef = useRef<Phase>("aim");
   const levelIdxRef = useRef(0);
@@ -182,7 +184,7 @@ export function Hoop() {
   const phaseAtRef = useRef(0); // when the current phase began — drives fades
   const runRef = useRef(1); // run number, readable inside the rAF loop
   const confettiRef = useRef<Confetti[]>([]);
-  const popRef = useRef<{ text: string; at: number } | null>(null);
+  const popRef = useRef<{ text: string; at: number; color: string } | null>(null);
   const newBestRef = useRef(false); // this make went deeper than ever
 
   // HUD state
@@ -191,6 +193,7 @@ export function Hoop() {
   const [runState, setRunState] = useState<RunState | null>(null);
   const [last, setLast] = useState<LastShot | null>(null);
   const [sndOn, setSndOn] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   const setPhaseBoth = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -219,6 +222,8 @@ export function Hoop() {
     lastRimAtRef.current = -Infinity;
     madeRef.current = false;
     newBestRef.current = false;
+    leanAtRef.current = -Infinity;
+    inMouthRef.current = false;
   };
 
   const shoot = useCallback(
@@ -270,6 +275,16 @@ export function Hoop() {
       });
       setPhaseBoth(depth === LEVELS.length ? "beat" : "cleared");
     } else {
+      // the near-miss gets named too — a rattle-out hurts more than an
+      // airball, and the game should say so
+      const rims = s.touches.filter((t) => t.kind === "rim").length;
+      if (rims > 0) {
+        popRef.current = {
+          text: rims >= 2 ? "RATTLED OUT" : "RIM OUT",
+          at: performance.now() / 1000,
+          color: ORANGE,
+        };
+      }
       sound.plunk(); // the run dies with a low dead thud
       navigator.vibrate?.(60);
       eventAtRef.current = performance.now() / 1000;
@@ -292,6 +307,7 @@ export function Hoop() {
     let dx = 0;
     if (joyish) dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
     else if (pose === "sad") dy = age < 0.24 ? 1 : 0;
+    else if (pose === "aim" && dragRef.current) dy = 1; // crouch into the pull
     else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
     if (pose === "panic") dx = Math.floor(now / 0.09) % 2 ? 1 : -1; // tremble
 
@@ -404,12 +420,12 @@ export function Hoop() {
       lastT = now;
 
       // the intro card hands off to aim on its own — no press needed
-      if (phaseRef.current === "enter" && now - phaseAtRef.current > 0.7) {
+      if (phaseRef.current === "enter" && now - phaseAtRef.current > 0.5) {
         setPhaseBoth("aim");
       }
       // a make rolls into the next level on its own — keep the momentum.
       // only death asks for a press.
-      if (phaseRef.current === "cleared" && now - phaseAtRef.current > 1.25) {
+      if (phaseRef.current === "cleared" && now - phaseAtRef.current > 1.0) {
         advance();
       }
 
@@ -430,10 +446,25 @@ export function Hoop() {
       // step the sim
       const shot = shotRef.current;
       if (phaseRef.current === "flying" && shot) {
-        // brief slow-mo as the ball drops through — let the moment land
-        const slow = madeRef.current && now - eventAtRef.current < 0.5;
+        // brief slow-mo as the ball drops through — let the moment land.
+        // the lean fires on every rim approach, so rim-outs get the same
+        // held breath as makes — that's the whole slot machine.
+        const slow =
+          (madeRef.current && now - eventAtRef.current < 0.5) ||
+          now - leanAtRef.current < 0.3;
         shot.step(slow ? dt * 0.35 : dt);
         const s = shot.state;
+        // edge-detect the ball falling into the rim's airspace; a rattle
+        // re-triggers on every downward pass, stretching the agony
+        const inMouth =
+          !s.done &&
+          s.vy < 0 &&
+          s.y > level.rim.y &&
+          s.y < level.rim.y + 0.7 &&
+          s.x > level.rim.x - 0.3 &&
+          s.x < level.rim.x + RIM_GAP + 0.3;
+        if (inMouth && !inMouthRef.current) leanAtRef.current = now;
+        inMouthRef.current = inMouth;
         trailRef.current.push({ x: s.x, y: s.y });
         if (trailRef.current.length > 70) trailRef.current.shift();
 
@@ -460,6 +491,7 @@ export function Hoop() {
           sound.swish();
           navigator.vibrate?.([20, 30, 40]);
           const depth = levelIdxRef.current + 1;
+          const firstEver = bestDepthRef.current === 0; // the conversion moment
           if (depth > bestDepthRef.current) {
             bestDepthRef.current = depth;
             newBestRef.current = true;
@@ -470,12 +502,24 @@ export function Hoop() {
           const banked = s.touches.some((t) => t.kind === "board");
           const rims = s.touches.filter((t) => t.kind === "rim").length;
           popRef.current = {
-            text: walled ? "OFF THE WALL" : rims >= 2 ? "RATTLED IN" : banked ? "BANK!" : "SWISH",
+            text:
+              depth === LEVELS.length
+                ? "GAME WINNER"
+                : firstEver
+                  ? "FIRST BUCKET"
+                  : walled
+                    ? "OFF THE WALL"
+                    : rims >= 2
+                      ? "RATTLED IN"
+                      : banked
+                        ? "BANK!"
+                        : "SWISH",
             at: now,
+            color: depth === LEVELS.length || newBestRef.current ? YELLOW : PAPER,
           };
-          // confetti from the rim
+          // confetti from the rim — the first bucket ever gets a parade
           const ccx = level.rim.x + RIM_GAP / 2;
-          const n = depth === LEVELS.length ? 80 : 28;
+          const n = depth === LEVELS.length ? 80 : firstEver ? 60 : 36;
           for (let i = 0; i < n; i++) {
             confettiRef.current.push({
               x: ccx,
@@ -590,14 +634,17 @@ export function Hoop() {
         ctx.lineTo(boardX, rimY);
         ctx.stroke();
       }
-      ctx.strokeStyle = ORANGE; // the iron
+      // the iron — flashes yellow the instant a make drops through
+      const ironC =
+        madeRef.current && now - eventAtRef.current < 0.25 ? YELLOW : ORANGE;
+      ctx.strokeStyle = ironC;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(frontX, rimY);
       ctx.lineTo(backX, rimY);
       ctx.stroke();
       ctx.lineWidth = 1;
-      ctx.fillStyle = ORANGE;
+      ctx.fillStyle = ironC;
       ctx.beginPath();
       ctx.arc(frontX, rimY, 2.5, 0, Math.PI * 2);
       ctx.arc(backX, rimY, 2.5, 0, Math.PI * 2);
@@ -746,6 +793,19 @@ export function Hoop() {
           ctx.fillRect(bx - 17, by + 14, 34, 5);
           ctx.fillStyle = p01 >= 0.999 ? YELLOW : ORANGE;
           ctx.fillRect(bx - 16, by + 15, 32 * p01, 3);
+          // training wheels: until the first-ever bucket, level 1 shows
+          // the opening beat of the true arc — deterministic physics keeps
+          // it honest. Gone forever after the first make.
+          if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
+            const ghost = createShot(level, aim.p, aim.a);
+            ctx.fillStyle = PAPER;
+            ctx.globalAlpha = 0.3;
+            for (let i = 0; i < 6; i++) {
+              ghost.step(0.055);
+              ctx.fillRect(sx(ghost.state.x) - 1.5, sy(ghost.state.y) - 1.5, 3, 3);
+            }
+            ctx.globalAlpha = 1;
+          }
         } else if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
           // first-timer: nothing on screen explains the gesture — this does
           ctx.fillStyle = PAPER;
@@ -782,7 +842,7 @@ export function Hoop() {
           const size = Math.round(28 - 9 * Math.min(a / 0.12, 1)); // slams in
           ctx.font = `700 ${size}px ui-monospace, Menlo, monospace`;
           ctx.textAlign = "center";
-          ctx.fillStyle = newBestRef.current ? YELLOW : PAPER;
+          ctx.fillStyle = pop.color;
           ctx.globalAlpha = a < 0.55 ? 1 : 1 - (a - 0.55) / 0.4;
           ctx.fillText(pop.text, sx(level.rim.x + RIM_GAP / 2), sy(level.rim.y + 0.7) - a * 18);
           ctx.globalAlpha = 1;
@@ -822,19 +882,21 @@ export function Hoop() {
         ctx.globalAlpha = 1;
       };
       const run = runRef.current;
-      if (ph === "dead") {
-        card("RUN OVER", `died on level ${level.id} — press to go again`, ORANGE);
-      } else if (ph === "cleared") {
+      if (ph === "cleared") {
         const nx = LEVELS[levelIdxRef.current + 1];
         card(
           newBestRef.current ? `LEVEL ${level.id} — NEW BEST` : `LEVEL ${level.id} CLEARED`,
           `next: level ${nx.id}`,
           newBestRef.current ? YELLOW : PAPER,
         );
-      } else if (ph === "beat") {
-        card(`ALL ${LEVELS.length} LEVELS`, `one ball, no misses · run ${run}`, YELLOW);
       } else if (ph === "enter") {
-        card(`LEVEL ${level.id}`, `run ${run}`, PAPER);
+        // level 6 is match point — it should feel like it
+        const lastOne = level.id === LEVELS.length;
+        card(
+          lastOne ? "THE LAST SHOT" : `LEVEL ${level.id}`,
+          lastOne ? `level ${level.id} — game ${run}` : `game ${run}`,
+          lastOne ? YELLOW : PAPER,
+        );
       }
     };
 
@@ -914,6 +976,23 @@ export function Hoop() {
   const run = runState?.run ?? 1;
   const bestDepth = runState?.bestDepth ?? 0;
 
+  // the wordle move: a game collapses to one pasteable line
+  const shareRun = async () => {
+    const made = phase === "beat" ? LEVELS.length : levelIdx;
+    const trail = "🏀".repeat(made) + (phase === "beat" ? "" : "✗");
+    const text =
+      phase === "beat"
+        ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\nhooping.io`
+        : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\nhooping.io`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard blocked — nothing to do
+    }
+  };
+
   return (
     <div className="flex h-dvh flex-col">
       {/* readout bar — the only chrome above the game */}
@@ -940,7 +1019,7 @@ export function Hoop() {
           </span>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs text-muted">
-          <span>RUN {run}</span>
+          <span>GAME {run}</span>
           <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length}` : "—"}</span>
           <button
             onClick={toggleSound}
@@ -964,6 +1043,52 @@ export function Hoop() {
           onPointerUp={onPointerUp}
           onPointerCancel={() => (dragRef.current = null)}
         />
+
+        {/* the verdict — a real panel, not canvas text. Tap anywhere
+            (including the panel) starts the next game; the share button
+            stops the tap from advancing. */}
+        {(phase === "dead" || phase === "beat") && (
+          <div
+            className="absolute inset-0 z-10 flex touch-none items-center justify-center bg-[#101216]/70 animate-[fade-in_0.2s_ease-out_0.1s_both]"
+            onPointerDown={advance}
+          >
+            <div className="flex w-72 max-w-[85%] flex-col items-center gap-4 border border-border bg-[#14161b] px-8 py-7 text-center font-mono animate-[verdict-in_0.3s_ease-out_0.15s_both]">
+              {phase === "dead" ? (
+                <>
+                  <h2 className="text-2xl font-bold tracking-tight text-accent-negative">
+                    GAME OVER
+                  </h2>
+                  <p className="text-xs text-muted">
+                    died on level {levelIdx + 1}
+                    {last ? ` — ${autopsy(last)}` : ""}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-2xl font-bold tracking-tight text-warning">
+                    YOU BEAT IT
+                  </h2>
+                  <p className="text-xs text-muted">
+                    all {LEVELS.length} levels, one ball, no misses
+                  </p>
+                </>
+              )}
+              <p className="text-xs text-muted">
+                GAME {run} · BEST {bestDepth}/{LEVELS.length}
+              </p>
+              <button
+                onClick={shareRun}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="border border-border bg-well px-4 py-2 text-xs text-foreground hover:bg-hover-bg"
+              >
+                {copied ? "copied" : "share result"}
+              </button>
+              <p className="animate-pulse text-[11px] text-muted">
+                tap anywhere to play again
+              </p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* status line — verdicts on the left, the controls truth on the right */}
@@ -973,15 +1098,13 @@ export function Hoop() {
         ) : phase === "beat" ? (
           <span className="text-accent">all {LEVELS.length} cleared, one ball</span>
         ) : phase === "dead" && last ? (
-          <span className="text-accent-negative">
-            {autopsy(last)} — press to run it back
-          </span>
+          <span className="text-accent-negative">{autopsy(last)}</span>
         ) : phase === "flying" ? (
           <span className="text-muted">…</span>
         ) : (
           // the drag lesson lives on the canvas, next to the ball —
           // this line states the stakes instead of repeating it
-          <span className="text-muted">one shot per level. a miss ends the run.</span>
+          <span className="text-muted">one shot per level. a miss ends the game.</span>
         )}
         <span className="flex shrink-0 items-center gap-3 text-muted max-sm:hidden">
           <span>
