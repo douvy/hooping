@@ -1763,7 +1763,7 @@ export function Hoop() {
           </span>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs text-[#fdfaf2]/70">
-          <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length}` : "—"}</span>
+          <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length} CLEARED` : "—"}</span>
           <button
             onClick={toggleSound}
             className="flex items-center hover:text-[#fdfaf2]"
@@ -1830,7 +1830,7 @@ export function Hoop() {
                 </>
               )}
               <p className="text-xs text-muted">
-                GAME {run} · BEST {bestDepth}/{LEVELS.length}
+                GAME {run} · BEST {bestDepth}/{LEVELS.length} CLEARED
               </p>
               <button
                 onClick={shareRun}
