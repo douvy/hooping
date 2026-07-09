@@ -1338,10 +1338,15 @@ export function Hoop() {
       // a wing that snaps between two frames in bursts: flap-flap-glide,
       // the oldest bird in cartooning. Some crossings bring a friend.
       if (night < 0.4) {
-        const CYCLE = 37; // seconds between crossings — prime, never syncs with the clouds
-        const cyc = Math.floor(now / CYCLE);
-        const ct = (now % CYCLE) / 14; // 14s on screen, the rest elsewhere
-        if (ct < 1) {
+        // no crossing in the first 50s — the bird must never share the
+        // screen with someone learning the drag, and being found beats
+        // being presented. After that, one pass a minute at most: a
+        // passerby, not a pet.
+        const CYCLE = 53; // prime — never syncs with the clouds
+        const bt = now - 50;
+        const cyc = Math.floor(bt / CYCLE);
+        const ct = (bt % CYCLE) / 14; // 14s on screen, the rest elsewhere
+        if (bt > 0 && ct < 1) {
           const dir = hash01(cyc * 13 + 5) > 0.5 ? 1 : -1;
           const bdx = dir > 0 ? ct * (W + 90) - 45 : W + 45 - ct * (W + 90);
           // altitude picked per crossing, a lazy bob on the way across
