@@ -646,17 +646,12 @@ export function Hoop() {
       ctx.moveTo(cx + 2.5 * k, eyeY - 1.6 * k);
       ctx.lineTo(cx + 1.1 * k, eyeY - 1.1 * k);
       ctx.stroke();
-      if (pose === "watch") {
-        // the little o — he can't believe it either
-        ctx.beginPath();
-        ctx.arc(cx + 0.5 * k, foot - 11.5 * k, 0.45 * k, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.beginPath();
-        ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
-        ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
-        ctx.stroke();
-      }
+      // flat mouth in flight too — a shooter who's good doesn't gasp at
+      // his own shot; the panic face stays reserved for rim chaos
+      ctx.beginPath();
+      ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
+      ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
+      ctx.stroke();
     } else {
       // stoic half-lids and a flat mouth — he's done this before
       ctx.beginPath();
@@ -716,6 +711,51 @@ export function Hoop() {
     ctx.lineWidth = 1;
     ctx.lineCap = "butt";
     ctx.lineJoin = "miter";
+  };
+
+  // the ball — flat mustard leather in a thick outline, thin dark seams
+  // spun by rot, reference-style: no shading. Shared by the rAF loop
+  // (at true physics size so rim reads honest) and the share card.
+  const drawBall = (
+    ctx: CanvasRenderingContext2D,
+    bx: number,
+    by: number,
+    r: number,
+    rot: number,
+  ) => {
+    const { outline: OUTLINE, ball: MUSTARD } = THEME;
+    ctx.save();
+    ctx.translate(bx, by);
+    ctx.fillStyle = MUSTARD;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.clip();
+    // seams — a gently bowed cross and two side arcs, spinning inside
+    // the clip. Thin against the outline, like the reference.
+    ctx.rotate(-rot);
+    ctx.strokeStyle = OUTLINE;
+    // ~65% of the outline's weight — the reference ball's seams are
+    // bold ink lines, not hairlines
+    ctx.lineWidth = Math.max(1.2, r * 0.13);
+    ctx.beginPath();
+    ctx.moveTo(-r, 0);
+    ctx.quadraticCurveTo(0, r * 0.35, r, 0);
+    ctx.moveTo(0, -r);
+    ctx.quadraticCurveTo(r * 0.35, 0, 0, r);
+    ctx.stroke();
+    for (const side of [-1.5, 1.5] as const) {
+      ctx.beginPath();
+      ctx.arc(side * r, 0, r * 1.05, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    // re-ink the leather over the clipped edges
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = Math.max(1.5, r * 0.2);
+    ctx.beginPath();
+    ctx.arc(bx, by, r, 0, Math.PI * 2);
+    ctx.stroke();
   };
 
   // --- the rAF loop ---
@@ -1357,45 +1397,6 @@ export function Hoop() {
         ctx.lineCap = "butt";
       }
 
-      // the ball — flat mustard leather in a thick outline, thin dark
-      // seams spinning with the flight, reference-style: no shading.
-      // Drawn at true physics size so rim reads honest.
-      const drawBall = (bx: number, by: number) => {
-        const r = ballR;
-        ctx.save();
-        ctx.translate(bx, by);
-        ctx.fillStyle = MUSTARD;
-        ctx.beginPath();
-        ctx.arc(0, 0, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.clip();
-        // seams — a gently bowed cross and two side arcs, spinning
-        // inside the clip. Thin against the outline, like the reference.
-        ctx.rotate(-ballRotRef.current);
-        ctx.strokeStyle = OUTLINE;
-        // ~65% of the outline's weight — the reference ball's seams are
-        // bold ink lines, not hairlines
-        ctx.lineWidth = Math.max(1.2, r * 0.13);
-        ctx.beginPath();
-        ctx.moveTo(-r, 0);
-        ctx.quadraticCurveTo(0, r * 0.35, r, 0);
-        ctx.moveTo(0, -r);
-        ctx.quadraticCurveTo(r * 0.35, 0, 0, r);
-        ctx.stroke();
-        for (const side of [-1.5, 1.5] as const) {
-          ctx.beginPath();
-          ctx.arc(side * r, 0, r * 1.05, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.restore();
-        // re-ink the leather over the clipped edges
-        ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = Math.max(1.5, r * 0.2);
-        ctx.beginPath();
-        ctx.arc(bx, by, r, 0, Math.PI * 2);
-        ctx.stroke();
-      };
-
       // the creature — drawn before the ball, so the ball he's holding
       // sits on top of his face, not behind his hair.
       // pose derived, never stored
@@ -1429,13 +1430,14 @@ export function Hoop() {
           ctx.fillStyle = halo;
           ctx.fillRect(bx2 - hr, by2 - hr, hr * 2, hr * 2);
         }
-        drawBall(bx2, by2);
+        drawBall(ctx, bx2, by2, ballR, ballRotRef.current);
       } else if (ph === "enter") {
-        drawBall(sx(level.launch.x), sy(level.launch.y)); // ball in hand, waiting
+        // ball in hand, waiting
+        drawBall(ctx, sx(level.launch.x), sy(level.launch.y), ballR, ballRotRef.current);
       } else if (ph === "dead" && shot) {
         // the dead ball lies where it stopped
         ballShadow(shot.state.x, Math.max(shot.state.y, BALL_R));
-        drawBall(sx(shot.state.x), sy(Math.max(shot.state.y, BALL_R)));
+        drawBall(ctx, sx(shot.state.x), sy(Math.max(shot.state.y, BALL_R)), ballR, ballRotRef.current);
       }
 
       // aiming — ball in his raised hands, the pull, the readout
@@ -1453,7 +1455,7 @@ export function Hoop() {
             by += (Math.random() - 0.5) * 2 * j;
           }
         }
-        drawBall(bx, by);
+        drawBall(ctx, bx, by, ballR, ballRotRef.current);
         if (aim) {
           const p01 = (aim.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
           const rad = (aim.a * Math.PI) / 180;
@@ -1726,30 +1728,165 @@ export function Hoop() {
   // what the miss cost you — no tease when you die on the last rung
   const nextLevel = levelIdx + 1 < LEVELS.length ? LEVELS[levelIdx + 1] : null;
 
-  // the wordle move: a game collapses to one pasteable line
+  // the share card — not a DOM screenshot but the world repainted as a
+  // poster: the sky the run ended under, the verdict, the career line,
+  // and the little guy with his ball standing where the button sits on
+  // screen. No "Game Over" — the wordmark carries the top.
+  const renderShareCard = (beat: boolean): Promise<Blob> => {
+    const { outline: OUTLINE, paper: PAPER, ball: MUSTARD, gold: YELLOW } = THEME;
+    const W = 1080;
+    const H = 1350; // 4:5 — survives every share sheet uncropped
+    const cv = document.createElement("canvas");
+    cv.width = W;
+    cv.height = H;
+    const ctx = cv.getContext("2d")!;
+    const DISPLAY =
+      getComputedStyle(document.body).getPropertyValue("--font-plex-serif").trim() ||
+      "ui-monospace, Menlo, monospace";
+    const night = NIGHT[levelIdx] ?? 1;
+    const grassY = H - 290;
+
+    // the sky the run ended under, stars and all
+    ctx.fillStyle = SKIES[levelIdx] ?? SKIES[SKIES.length - 1];
+    ctx.fillRect(0, 0, W, H);
+    if (night > 0.5) {
+      ctx.fillStyle = PAPER;
+      ctx.globalAlpha = (night - 0.5) * 2 * 0.7;
+      for (let i = 0; i < 70; i++) {
+        ctx.fillRect(hash01(i * 2 + 1) * W, hash01(i * 2 + 2) * grassY * 0.6, 5, 5);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // sticker lettering, the game's house style
+    ctx.textAlign = "center";
+    ctx.lineJoin = "round";
+    const sticker = (text: string, size: number, y: number, fill: string) => {
+      ctx.font = `700 ${size}px ${DISPLAY}`;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(5, size * 0.18);
+      ctx.strokeText(text, W / 2, y);
+      ctx.fillStyle = fill;
+      ctx.fillText(text, W / 2, y);
+    };
+    sticker("HOOPING", 104, 200, MUSTARD);
+    sticker(
+      beat ? `ALL ${LEVELS.length} LEVELS, ONE BALL` : `LEVEL ${levelIdx + 1}`,
+      76,
+      330,
+      beat ? YELLOW : PAPER,
+    );
+
+    // the stat lines, mono like the panel — ink by day, paper by night
+    ctx.font = `600 42px ui-monospace, Menlo, monospace`;
+    ctx.fillStyle = night > 0.5 ? PAPER : OUTLINE;
+    ctx.fillText(`GAME ${run} · BEST ${bestDepth}/${LEVELS.length}`, W / 2, 445);
+    ctx.fillText(`${buckets} CAREER ${buckets === 1 ? "BUCKET" : "BUCKETS"}`, W / 2, 510);
+
+    // the ground — grass with the asphalt cap, same seams as the game
+    ctx.fillStyle = THEME.grass;
+    ctx.fillRect(0, grassY, W, H - grassY);
+    ctx.fillStyle = THEME.asphalt;
+    ctx.fillRect(0, grassY, W, 46);
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, grassY);
+    ctx.lineTo(W, grassY);
+    ctx.stroke();
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, grassY + 46);
+    ctx.lineTo(W, grassY + 46);
+    ctx.stroke();
+
+    // the little guy — crowned in his V after a win, ball resting at his
+    // feet; otherwise frozen in the follow-through, the shot still rising.
+    // snapNow: a fixed clock that lands every pose on its rest frame
+    // (no mid-hop feet, no mid-bob offset).
+    const k = 21;
+    const snapNow = beat ? eventAtRef.current + 1 : 0.001;
+    if (beat) {
+      drawCreature(ctx, W / 2, grassY, k, "triumph", snapNow);
+      ctx.fillStyle = withAlpha(OUTLINE, "2b");
+      ctx.beginPath();
+      ctx.ellipse(W / 2 + 7.5 * k, grassY + 2, 3.3 * k, 0.9 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawBall(ctx, W / 2 + 7.5 * k, grassY - 2.8 * k, 2.8 * k, 0.6);
+    } else {
+      // mid-shot: the ball high on its arc up-right, ghost beats trailing
+      // back to his shooting hand like the training-wheel dots
+      const feetX = W / 2 - 120;
+      drawCreature(ctx, feetX, grassY, k, "watch", snapNow);
+      const handX = feetX + 7.4 * k;
+      const handY = grassY - 16.5 * k;
+      const ballX = W / 2 + 250;
+      const ballY = 620;
+      ctx.fillStyle = OUTLINE;
+      for (let i = 1; i <= 5; i++) {
+        const t = i / 6;
+        const gx = handX + (ballX - handX) * t;
+        // ease-out rise — the dots climb steeply then flatten at the ball
+        const gy = handY + (ballY - handY) * (1 - (1 - t) * (1 - t));
+        ctx.globalAlpha = 0.15 + 0.3 * t;
+        ctx.fillRect(gx - 5, gy - 5, 10, 10);
+      }
+      ctx.globalAlpha = 1;
+      drawBall(ctx, ballX, ballY, 2.8 * k, 2.2);
+    }
+
+    ctx.font = `600 38px ui-monospace, Menlo, monospace`;
+    ctx.fillStyle = PAPER;
+    ctx.fillText("hooping.io", W / 2, H - 60);
+
+    return new Promise<Blob>((resolve, reject) => {
+      cv.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png");
+    });
+  };
+
+  // the wordle move, upgraded: the game collapses to one PNG. Phones get
+  // the card through the native share sheet; desktop copies it to the
+  // clipboard, or downloads it when the clipboard won't take images.
   const shareRun = async () => {
-    const made = phase === "beat" ? LEVELS.length : levelIdx;
-    const trail = "🏀".repeat(made) + (phase === "beat" ? "" : "✗");
-    const text =
-      phase === "beat"
-        ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\n${buckets} career buckets\nhooping.io`
-        : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\n${buckets} career buckets\nhooping.io`;
-    // phones get the native share sheet; desktop copies. share() rejects
-    // when the user dismisses the sheet — that's a no-op, not a fallback.
+    const beat = phase === "beat";
+    const made = beat ? LEVELS.length : levelIdx;
+    const trail = "🏀".repeat(made) + (beat ? "" : "✗");
+    // the text line rides along as the caption where the platform allows
+    const text = beat
+      ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\n${buckets} career buckets\nhooping.io`
+      : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\n${buckets} career buckets\nhooping.io`;
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+      // share() rejects when the user dismisses the sheet — that's a
+      // no-op, not a fallback
       try {
-        await navigator.share({ text });
+        const file = new File([await renderShareCard(beat)], `hooping-game-${run}.png`, {
+          type: "image/png",
+        });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], text });
+        } else {
+          await navigator.share({ text }); // no file sharing — old move
+        }
       } catch {
         // sheet dismissed
       }
       return;
     }
     try {
-      await navigator.clipboard.writeText(text);
+      // ClipboardItem takes the promise itself — Safari requires the
+      // write to begin inside the click, before any await
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": renderShareCard(beat) }),
+      ]);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard blocked — nothing to do
+      // clipboard won't take images (or blocked) — hand the file over
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(await renderShareCard(beat));
+      a.download = `hooping-game-${run}.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
     }
   };
 
