@@ -162,7 +162,8 @@ interface Confetti {
   drag: number;
 }
 
-// enter = the level-intro card; presses are ignored until it hands off to aim
+// enter = the level-intro card; it hands off to aim on its own, and any
+// press skips straight there — the card never eats an input
 type Phase = "enter" | "aim" | "flying" | "cleared" | "dead" | "beat";
 type Pose = "aim" | "watch" | "panic" | "joy" | "triumph" | "rest";
 
@@ -224,6 +225,13 @@ export function Hoop() {
   const phaseRef = useRef<Phase>("aim");
   const levelIdxRef = useRef(0);
   const lastAimRef = useRef<Aim | null>(null);
+  // the pull's memory, per level, across games this session. The game is
+  // memorizing six shots, but mobile hands had no reference — this feeds
+  // the ghost arrow while aiming and space-replay on the same level.
+  const levelAimsRef = useRef<(Aim | null)[]>([]);
+  // consecutive clean makes per level, across games — the veteran's
+  // meta-game on rungs they've long since solved
+  const swishStreakRef = useRef<number[]>([]);
   const phaseAtRef = useRef(0); // when the current phase began — drives fades
   const runRef = useRef(1); // run number, readable inside the rAF loop
   const confettiRef = useRef<Confetti[]>([]);
@@ -280,6 +288,7 @@ export function Hoop() {
       resetForAim();
       shotRef.current = createShot(LEVELS[levelIdxRef.current], aim.p, aim.a);
       lastAimRef.current = aim;
+      levelAimsRef.current[levelIdxRef.current] = aim;
       setPhaseBoth("flying");
     },
     [setPhaseBoth],
@@ -338,6 +347,8 @@ export function Hoop() {
           color: THEME.ball,
         };
       }
+      // any miss breaks the level's clean-make streak
+      swishStreakRef.current[levelIdxRef.current] = 0;
       sound.plunk(); // the run dies with a low dead thud
       navigator.vibrate?.(60);
       eventAtRef.current = performance.now() / 1000;
@@ -1051,8 +1062,11 @@ export function Hoop() {
         setPhaseBoth("aim");
       }
       // a make rolls into the next level on its own — keep the momentum.
-      // only death asks for a press.
-      if (phaseRef.current === "cleared" && now - phaseAtRef.current > 1.0) {
+      // only death asks for a press. Regrind levels (below your best)
+      // get a short beat: the run back to the frontier shouldn't idle.
+      const clearedHold =
+        LEVELS[levelIdxRef.current].id < bestDepthRef.current ? 0.4 : 1.0;
+      if (phaseRef.current === "cleared" && now - phaseAtRef.current > clearedHold) {
         advance();
       }
 
@@ -1147,6 +1161,12 @@ export function Hoop() {
           const walled = s.touches.some((t) => t.kind === "wall");
           const banked = s.touches.some((t) => t.kind === "board");
           const rims = s.touches.filter((t) => t.kind === "rim").length;
+          // clean make = the SWISH branch below; streak survives across
+          // games so the 800th layup still has something to protect
+          const li = levelIdxRef.current;
+          const clean = !walled && rims < 2 && !banked;
+          swishStreakRef.current[li] = clean ? (swishStreakRef.current[li] ?? 0) + 1 : 0;
+          const streak = swishStreakRef.current[li];
           popRef.current = {
             text:
               depth === LEVELS.length
@@ -1161,7 +1181,9 @@ export function Hoop() {
                         ? "RATTLED IN"
                         : banked
                           ? "BANK!"
-                          : "SWISH",
+                          : streak >= 2
+                            ? `SWISH ×${streak}`
+                            : "SWISH",
             at: now,
             color:
               depth === LEVELS.length || newBestRef.current || milestone
@@ -1796,6 +1818,26 @@ export function Hoop() {
       if (ph === "aim") {
         let bx = sx(level.launch.x);
         let by = sy(level.launch.y);
+        // the ghost of the last pull on this level — a faint dashed
+        // reference to line the live arrow up against. Mobile's
+        // space-replay: the hands still execute, the eyes get a target.
+        const mem = levelAimsRef.current[levelIdxRef.current];
+        if (mem) {
+          const mp = (mem.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
+          const mr = (mem.a * Math.PI) / 180;
+          const ml = 14 + mp * 52;
+          ctx.strokeStyle = OUTLINE;
+          ctx.globalAlpha = 0.28;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([2, 6]);
+          ctx.beginPath();
+          ctx.moveTo(bx, by);
+          ctx.lineTo(bx + Math.cos(mr) * ml, by - Math.sin(mr) * ml);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+          ctx.lineWidth = 1;
+        }
         const drag = dragRef.current;
         const aim = drag ? aimFromDrag(drag) : null;
         if (aim) {
@@ -1994,8 +2036,12 @@ export function Hoop() {
   const onPointerDown = (e: React.PointerEvent) => {
     sound.unlock();
     const ph = phaseRef.current;
-    if (ph === "flying" || ph === "enter") return;
-    if (ph !== "aim") {
+    if (ph === "flying") return;
+    if (ph === "enter") {
+      // a press during the intro card is a player already pulling —
+      // skip the rest of the read instead of eating the drag
+      setPhaseBoth("aim");
+    } else if (ph !== "aim") {
       advance(); // cleared → next level, dead/beat → run it back
       return;
     }
@@ -2031,7 +2077,8 @@ export function Hoop() {
     shoot(aimFromDrag(d));
   };
 
-  // Space = the exact same pull again. Deterministic physics makes this an
+  // Space = this level's remembered pull (the ghost arrow), falling back
+  // to the last pull anywhere. Deterministic physics makes this an
   // instant replay of the aim — the proof there's no dice in the machine.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -2043,16 +2090,19 @@ export function Hoop() {
       e.preventDefault();
       sound.unlock();
       const ph = phaseRef.current;
-      if (ph === "flying" || ph === "enter") return;
-      if (ph !== "aim") {
+      if (ph === "flying") return;
+      if (ph === "enter") {
+        setPhaseBoth("aim"); // the masher's replay must not be eaten
+      } else if (ph !== "aim") {
         advance();
         return;
       }
-      if (lastAimRef.current) shoot(lastAimRef.current);
+      const mem = levelAimsRef.current[levelIdxRef.current] ?? lastAimRef.current;
+      if (mem) shoot(mem);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shoot, advance]);
+  }, [shoot, advance, setPhaseBoth]);
 
   // --- the miss autopsy ---
   const autopsy = (l: LastShot): string => {
