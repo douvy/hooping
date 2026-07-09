@@ -80,6 +80,19 @@ test("every shot on every level terminates", () => {
   }
 });
 
+test("a ball landing on a ledge dies fast — no 12s waits", () => {
+  // lob onto a horizontal ledge: the bounces decay, and the slow last
+  // touch must kill the shot instead of letting it rest until the clock
+  const ledged: Level = {
+    ...LEVELS[0],
+    walls: [{ x1: 2, y1: 2, x2: 4, y2: 2 }],
+  };
+  const r = simulateShot(ledged, 5.5, 70);
+  assert.ok(r.touches.some((t) => t.kind === "wall"), "never touched the ledge");
+  assert.ok(!r.made);
+  assert.ok(r.t < 3, `dead ball took ${r.t.toFixed(2)}s`);
+});
+
 test("walls reflect the ball — a solid wall can't be shot through", () => {
   const walled: Level = {
     ...LEVELS[0],

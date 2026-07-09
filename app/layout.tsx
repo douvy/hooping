@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { IBM_Plex_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -10,6 +10,13 @@ const inter = Inter({
 
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+});
+
+// the display face — the wordmark, GAME OVER, and the canvas pops
+const plexSerif = IBM_Plex_Serif({
+  weight: ["600", "700"],
+  variable: "--font-plex-serif",
   subsets: ["latin"],
 });
 
@@ -39,7 +46,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans`}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} ${plexSerif.variable} font-sans`}>
         <main className="min-h-screen">{children}</main>
         {/* Vercel-only: the insights script is served by their edge, so
             local/CI builds would 404 it and fail */}

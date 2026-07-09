@@ -1,8 +1,10 @@
 // HOOP core physics. Deterministic and pure: same shot → same result,
 // no RNG anywhere. The rim is two steel points and the ball is a circle;
 // everything dramatic about basketball — rattles, rim-outs, banks — falls
-// out of circle-vs-point collisions with real dimensions. Ball Ø24cm,
-// rim Ø45cm: only 10.5cm of grace per side. Tuned in scripts/hoopsim.mjs.
+// out of circle-vs-point collisions with near-real dimensions. Ball Ø22cm,
+// rim Ø48cm — both a hair kinder than regulation, 13cm of grace per side:
+// fatter make bands, friendlier game, same drama. Tuned in
+// scripts/hoopsim.mjs.
 
 export interface Vec {
   x: number;
@@ -30,8 +32,8 @@ export interface Level {
   walls: Wall[];
 }
 
-export const BALL_R = 0.12; // regulation-ish basketball
-export const RIM_GAP = 0.45; // 18" rim
+export const BALL_R = 0.11; // a hair under regulation — grace lives here
+export const RIM_GAP = 0.48; // a shade over 18" — the friendly iron
 export const RIM_TUBE = 0.02; // the steel itself
 export const BOARD_OFF = 0.1; // glass sits just behind the back rim
 export const BOARD_H = 0.9;
@@ -49,17 +51,19 @@ const SETTLE_SPEED = 1.0; // a floor hit slower than this is a dead ball
 const NET_DRAG = 0.45; // the swish grabs the ball on the way through
 
 // The ladder. One shot per level, miss = level 1 — so each level's answer
-// must be learnable (deterministic) and its make-band fat enough that a
-// practiced hand hits ~55-70% (verified in scripts/gauntlet.mjs; the
-// solvability and difficulty bounds are locked in hoop.test.ts).
+// must be learnable (deterministic) and the band must steepen as a ramp:
+// level 1 is a near-gimme handshake (~80% practiced) that pulls players
+// in, then each rung tightens down to ~50% at the keyhole (verified in
+// scripts/gauntlet.mjs; solvability and difficulty bounds are locked in
+// hoop.test.ts).
 export const LEVELS: Level[] = [
   {
     id: 1,
     name: "layup",
-    w: 6,
+    w: 5.5,
     h: 5,
     launch: { x: 1, y: 1 },
-    rim: { x: 3.6, y: 2.4 },
+    rim: { x: 3.0, y: 2.2 },
     board: true,
     walls: [],
   },
@@ -69,7 +73,7 @@ export const LEVELS: Level[] = [
     w: 8,
     h: 5,
     launch: { x: 1, y: 1 },
-    rim: { x: 5.4, y: 3.05 },
+    rim: { x: 5.2, y: 2.9 },
     board: true,
     walls: [],
   },
@@ -91,7 +95,7 @@ export const LEVELS: Level[] = [
     launch: { x: 1, y: 1 },
     rim: { x: 5.4, y: 3.05 },
     board: true,
-    walls: [{ x1: 3.4, y1: 0, x2: 3.4, y2: 2.6 }],
+    walls: [{ x1: 3.4, y1: 0, x2: 3.4, y2: 2.9 }],
   },
   {
     id: 5,
@@ -101,7 +105,7 @@ export const LEVELS: Level[] = [
     launch: { x: 1, y: 1 },
     rim: { x: 5.4, y: 3.05 },
     board: true,
-    walls: [{ x1: 2.6, y1: 4.4, x2: 6.4, y2: 4.4 }],
+    walls: [{ x1: 2.6, y1: 4.0, x2: 6.4, y2: 4.0 }],
   },
   {
     id: 6,
@@ -112,8 +116,8 @@ export const LEVELS: Level[] = [
     rim: { x: 5.6, y: 3.05 },
     board: true,
     walls: [
-      { x1: 3.6, y1: 0, x2: 3.6, y2: 2.8 },
-      { x1: 2.6, y1: 4.5, x2: 6.6, y2: 4.5 },
+      { x1: 3.6, y1: 0, x2: 3.6, y2: 3.5 },
+      { x1: 2.6, y1: 4.15, x2: 6.6, y2: 4.15 },
     ],
   },
 ];
@@ -222,6 +226,9 @@ export function createShot(
       s.vx -= (1 + E_WALL) * vn * nx;
       s.vy -= (1 + E_WALL) * vn * ny;
       touch("wall", -vn);
+      // a slow bounce on a top surface is a dead ball, same rule as the
+      // floor — otherwise the ball rests on a ledge until the clock
+      if (ny > 0.7 && -vn < SETTLE_SPEED) s.done = true;
     }
   }
 

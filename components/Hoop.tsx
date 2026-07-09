@@ -19,16 +19,20 @@ import {
   MIN_POWER,
   RIM_GAP,
   createShot,
+  type Level,
   type Shooter,
   type Touch,
 } from "@/lib/hoop";
 import { createSpring } from "@/lib/spring";
 import * as sound from "@/lib/sound";
+import { SKIES, THEME, darken, withAlpha } from "@/lib/theme";
 
 // Layout is the Doodle Jump deal: one thin readout bar, one thin status
 // line, and every other pixel is the game. The hand-touched detail lives
-// inside the world — the notebook-grid gym floor, the level number
-// painted at center court, the pixel creature — not in chrome around it.
+// inside the world — the painted court, the skyline, the creature — not
+// in chrome around it. Art direction: flat cartoon, thick warm-dark
+// outlines on everything, colors from lib/theme.ts, one sky per level
+// running afternoon into night.
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return (
@@ -38,51 +42,76 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-const PAPER = "#eceae0";
-const ORANGE = "#d45a2b";
-const YELLOW = "#ffffc9";
-const MUTED = "#7b7e8a";
-// the creature's own colors travel with him
-const BODY = "#3a3f4a";
-const PATCH = "#555b68";
-const FACE = "#9aa0ab"; // light face on dark fur — the two-tone is the charm
-const HEADBAND = "#418ecd";
-const EYES = "#30343c"; // dark features on the light face, like the reference
+// The death-panel tease: the court the miss cost you, in miniature.
+// Drawn from the real level geometry — floor, iron, glass, walls, and
+// the launch spot — so dying on level 3 shows exactly what 4 asks.
+function MiniCourt({ level }: { level: Level }) {
+  const s = 40 / level.h;
+  const W = level.w * s;
+  const H = level.h * s;
+  const X = (x: number) => x * s;
+  const Y = (y: number) => H - y * s;
+  const boardX = level.rim.x + RIM_GAP + BOARD_OFF;
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="overflow-visible">
+      <line x1={0} y1={Y(0)} x2={W} y2={Y(0)} stroke={THEME.outline} strokeWidth={2} />
+      {level.walls.map((w, i) => (
+        <line
+          key={i}
+          x1={X(w.x1)}
+          y1={Y(w.y1)}
+          x2={X(w.x2)}
+          y2={Y(w.y2)}
+          stroke={THEME.outline}
+          strokeWidth={3}
+          strokeLinecap="round"
+        />
+      ))}
+      {level.board && (
+        <line
+          x1={X(boardX)}
+          y1={Y(level.rim.y - 0.05)}
+          x2={X(boardX)}
+          y2={Y(level.rim.y + BOARD_H)}
+          stroke={THEME.outline}
+          strokeWidth={2}
+          strokeLinecap="round"
+        />
+      )}
+      <line
+        x1={X(level.rim.x)}
+        y1={Y(level.rim.y)}
+        x2={X(level.rim.x + RIM_GAP)}
+        y2={Y(level.rim.y)}
+        stroke={THEME.rim}
+        strokeWidth={2.5}
+        strokeLinecap="round"
+      />
+      <circle
+        cx={X(level.launch.x)}
+        cy={Y(level.launch.y)}
+        r={3}
+        fill={THEME.ball}
+        stroke={THEME.outline}
+        strokeWidth={1.5}
+      />
+    </svg>
+  );
+}
 
 const CANVAS_FONT = "10px ui-monospace, Menlo, monospace";
 
-// the creature, 13×14 — taller than wide, like the reference: a round
-// furry head with jagged cheek tufts, then a narrower body bean, tiny
-// feet. # = fur, f = face. Expressions overlaid per-pose in drawCreature.
-const CREATURE_PIX = [
-  "....#####....",
-  "..#########..",
-  ".###########.",
-  ".###fffff###.",
-  "###fffffff###",
-  ".##fffffff##.",
-  "###fffffff###",
-  ".###fffff###.",
-  "..##fffff##..",
-  "...#######...",
-  "...#######...",
-  "...#######...",
-  "....#####....",
-  "....##.##....",
-];
+// how far into night each level is — drives the floodlight, the city's
+// windows, and the stars. Levels 1-2 are daylight, 6 is full dark; the
+// sky itself comes from SKIES in lib/theme.ts.
+const NIGHT = [0, 0, 0.15, 0.45, 0.8, 1];
 
-// the ball, 9×9: o = leather, S = seam (vertical + horizontal + side arcs)
-const BALL_PIX = [
-  "..ooSoo..",
-  ".oooSooo.",
-  "ooSoSoSoo",
-  "oSooSooSo",
-  "SSSSSSSSS",
-  "oSooSooSo",
-  "ooSoSoSoo",
-  ".oooSooo.",
-  "..ooSoo..",
-];
+// deterministic scatter for stars, windows, and dirt — the same world
+// every visit, no RNG state to carry
+function hash01(n: number): number {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
 
 const kickSpring = createSpring({ stiffness: 320, damping: 14, mass: 1 });
 
@@ -124,7 +153,7 @@ interface Confetti {
 
 // enter = the level-intro card; presses are ignored until it hands off to aim
 type Phase = "enter" | "aim" | "flying" | "cleared" | "dead" | "beat";
-type Pose = "aim" | "watch" | "panic" | "joy" | "triumph" | "sad";
+type Pose = "aim" | "watch" | "panic" | "joy" | "triumph" | "rest";
 
 interface LastShot {
   made: boolean;
@@ -139,6 +168,7 @@ interface RunState {
 }
 
 const RUN_KEY = "hoop-run-v1";
+const MUTE_KEY = "hoop-muted-v1";
 
 function loadRun(): RunState {
   try {
@@ -169,12 +199,13 @@ export function Hoop() {
   const shotRef = useRef<Shooter | null>(null);
   const dragRef = useRef<{ sx: number; sy: number; dx: number; dy: number } | null>(null);
   const trailRef = useRef<{ x: number; y: number }[]>([]);
+  const ballRotRef = useRef(0); // the leather spins in flight
   const sparksRef = useRef<Spark[]>([]);
   const seenTouchesRef = useRef(0);
   const lastRimAtRef = useRef(-Infinity); // panic window
   const madeRef = useRef(false);
   const bestDepthRef = useRef(0); // gates the new-deepest fanfare
-  const eventAtRef = useRef(-Infinity); // joy hop / sad flinch clock
+  const eventAtRef = useRef(-Infinity); // joy hop clock
   const leanAtRef = useRef(-Infinity); // rim-approach slow-mo clock
   const inMouthRef = useRef(false); // edge-detects entry into rim airspace
   const kickAtRef = useRef(-Infinity);
@@ -201,13 +232,16 @@ export function Hoop() {
     setPhase(p);
   }, []);
 
-  // mount: load the run (localStorage is client-only, defer past paint)
+  // mount: load run, palette, mute (localStorage is client-only, defer past paint)
   useEffect(() => {
     const t = setTimeout(() => {
       const s = loadRun();
       bestDepthRef.current = s.bestDepth;
       runRef.current = s.run;
       setRunState(s);
+      const m = localStorage.getItem(MUTE_KEY) === "1";
+      sound.setMuted(m);
+      setSndOn(!m);
     }, 0);
     return () => clearTimeout(t);
   }, []);
@@ -215,6 +249,7 @@ export function Hoop() {
   const resetForAim = () => {
     shotRef.current = null;
     trailRef.current = [];
+    ballRotRef.current = 0;
     sparksRef.current = [];
     confettiRef.current = [];
     popRef.current = null;
@@ -282,7 +317,7 @@ export function Hoop() {
         popRef.current = {
           text: rims >= 2 ? "RATTLED OUT" : "RIM OUT",
           at: performance.now() / 1000,
-          color: ORANGE,
+          color: THEME.ball,
         };
       }
       sound.plunk(); // the run dies with a low dead thud
@@ -292,7 +327,8 @@ export function Hoop() {
     }
   }, [setPhaseBoth]);
 
-  // --- the creature — drawn from CREATURE_PIX, expressions overlaid ---
+  // --- the creature — flat cartoon: outlined head under dark spiky
+  // hair, light face. k is his unit size; he stands ~15k tall.
   const drawCreature = (
     ctx: CanvasRenderingContext2D,
     feetX: number,
@@ -301,94 +337,370 @@ export function Hoop() {
     pose: Pose,
     now: number,
   ) => {
-    const joyish = pose === "joy" || pose === "triumph";
+    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND } = THEME;
     const age = now - eventAtRef.current;
     let dy = 0;
     let dx = 0;
-    if (joyish) dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
-    else if (pose === "sad") dy = age < 0.24 ? 1 : 0;
+    // he's even-keeled: beating the game gets the double hop, a make
+    // gets one modest hop, a miss doesn't move him
+    if (pose === "triumph") dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
+    else if (pose === "joy") dy = age < 0.16 ? -1 : 0;
     else if (pose === "aim" && dragRef.current) dy = 1; // crouch into the pull
     else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
     if (pose === "panic") dx = Math.floor(now / 0.09) % 2 ? 1 : -1; // tremble
 
-    // integer origin — fractional coords leave antialiasing seams between
-    // the cells that read as thin lines through the sprite
-    const ox = Math.round(feetX - 6.5 * k) + dx * k;
-    const oy = Math.round(floorY - 14 * k) + dy * k;
-    const px = (x: number, y: number, w: number, h: number, c: string) => {
-      ctx.fillStyle = c;
-      ctx.fillRect(ox + x * k, oy + y * k, w * k, h * k);
-    };
+    const cx = feetX + dx * k;
+    const foot = floorY + dy * k;
+    // Construction: one chunky rounded-square head, tiny stoic features
+    // low on the face, a white hoodie bunched off the left shoulder,
+    // jointed arms. Few shapes, all wearing the same line — less plush
+    // toy, more point guard.
+    const headW = 10.4 * k;
+    const headH = 8.6 * k;
+    const headY = foot - 14.6 * k;
+    const headR = headH / 2; // the marks above hang off this
+    const headTop = headY - headR;
+    const lw = Math.max(1.5, k * 0.9); // his cartoon line scales with him
 
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = lw;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+
+    // legs — longer than a plush toy's, still chunky
+    for (const lx of [-1.8, 1.8]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + lx * k, foot - 4.4 * k);
+      ctx.lineTo(cx + lx * k, foot - 1.2 * k);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.5 * k + lw * 1.6;
+      ctx.stroke();
+      ctx.strokeStyle = FUR;
+      ctx.lineWidth = 1.5 * k;
+      ctx.stroke();
+    }
+    // shoes — little white outlined sneakers
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = lw;
+    ctx.fillStyle = PAPER;
+    for (const fx of [-2.0, 2.0]) {
+      ctx.beginPath();
+      ctx.ellipse(cx + fx * k, foot - 0.85 * k, 1.75 * k, 1.0 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // the hood — bunched off to one side (his left; he faces the hoop),
+    // drawn behind the body so only the outer bulge shows: one wide
+    // puffy lobe sitting at the shoulder, its top level with the top of
+    // the hoodie. Nothing on the right.
+    ctx.beginPath();
+    ctx.ellipse(cx - 5.3 * k, foot - 9.0 * k, 3.5 * k, 2.2 * k, 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    // the hoodie — one paper-white shape over the hood
+    ctx.beginPath();
+    ctx.roundRect(cx - 3.2 * k, foot - 10.2 * k, 6.4 * k, 6.6 * k, 1.7 * k);
+    ctx.fill();
+    ctx.stroke();
+    // the hood's edge — two ink lines starting on the lobe, curving in
+    // toward the head, passing under the chin and wrapping around to
+    // the other side. The fabric is the same white as the body; a
+    // filled shape here reads as a plate, so only the folds are drawn.
+    ctx.lineWidth = Math.max(1, lw * 0.8);
+    ctx.beginPath();
+    ctx.moveTo(cx - 6.4 * k, foot - 10.2 * k);
+    ctx.quadraticCurveTo(cx - 4.6 * k, foot - 11.0 * k, cx - 2.0 * k, foot - 10.6 * k);
+    ctx.quadraticCurveTo(cx + 1.8 * k, foot - 10.4 * k, cx + 3.2 * k, foot - 8.8 * k);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - 5.4 * k, foot - 8.4 * k);
+    ctx.quadraticCurveTo(cx - 3.0 * k, foot - 9.4 * k, cx - 0.8 * k, foot - 9.2 * k);
+    ctx.quadraticCurveTo(cx + 1.6 * k, foot - 9.0 * k, cx + 2.8 * k, foot - 7.6 * k);
+    ctx.stroke();
+    // a fold in the fabric, low on the torso
+    ctx.lineWidth = Math.max(1, lw * 0.7);
+    ctx.beginPath();
+    ctx.arc(cx - 0.6 * k, foot - 5.2 * k, 1.6 * k, Math.PI * 0.15, Math.PI * 0.6);
+    ctx.stroke();
+    ctx.lineWidth = lw;
+    // arms — shoulder, elbow, hand: jointed, so poses read athletic.
+    // Drawn before the head so raised mittens sit against it.
     const flail = Math.floor(now / 0.14) % 2 === 0;
-    const blink = (now * 1000) % 3800 > 3560;
+    // [elbowX, elbowY, handX, handY] per side, in k units off the feet
+    const arms: readonly (readonly [number, number, number, number])[] =
+      pose === "triumph"
+        ? [
+            [-5.0, -12.5, -6.4, -17.5],
+            [5.0, -12.5, 6.4, -17.5],
+          ] // the V — beating the whole game earns it
+        : pose === "joy"
+          ? [
+              [-3.9, -7.9, -4.4, -5.6],
+              [5.0, -12.5, 6.2, -16.8],
+            ] // one fist up, off arm easy — a made shot is the job
+          : pose === "panic"
+            ? [
+                [-5.0, -8.6, -7.4, flail ? -9.4 : -7.4],
+                [5.0, -8.6, 7.4, flail ? -7.4 : -9.4],
+              ] // flailing
+            : pose === "rest"
+              ? [
+                  [-3.9, -7.9, -4.4, -5.6],
+                  [3.9, -7.9, 4.4, -5.6],
+                ] // arms easy at his sides — he takes the L quietly
+              : pose === "watch"
+                ? [
+                    [-4.6, -9.6, -5.6, -11.5],
+                    [5.6, -12.0, 7.4, -16.5],
+                  ] // the follow-through, held — off hand low, shooting hand high
+                : [
+                    [-4.6, -13.6, -1.9, -18.3],
+                    [5.2, -13.2, 2.6, -18.1],
+                  ]; // aim: both hands up over his head, under the ball — proper form
+    for (const [ex2, ey2, hx, hy] of arms) {
+      const ax = cx + Math.sign(hx) * 3.0 * k; // the shoulder
+      const ay = foot - 8.8 * k;
+      const elX = cx + ex2 * k;
+      const elY = foot + ey2 * k;
+      const handX = cx + hx * k;
+      const handY = foot + hy * k;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(elX, elY);
+      ctx.lineTo(handX, handY);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.5 * k + lw * 1.6;
+      ctx.stroke();
+      ctx.strokeStyle = PAPER; // sleeves
+      ctx.lineWidth = 1.5 * k;
+      ctx.stroke();
+      // the wristband — a blue tick across the forearm
+      const flen = Math.hypot(handX - elX, handY - elY) || 1;
+      const wx = elX + (handX - elX) * 0.7;
+      const wy = elY + (handY - elY) * 0.7;
+      ctx.strokeStyle = HEADBAND;
+      ctx.lineWidth = 0.8 * k;
+      ctx.beginPath();
+      ctx.moveTo(wx - ((handY - elY) / flen) * 0.75 * k, wy + ((handX - elX) / flen) * 0.75 * k);
+      ctx.lineTo(wx + ((handY - elY) / flen) * 0.75 * k, wy - ((handX - elX) / flen) * 0.75 * k);
+      ctx.stroke();
+      // the mitten
+      ctx.fillStyle = FACE;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = lw;
+      ctx.beginPath();
+      ctx.arc(handX, handY, 1.05 * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // ears — little side nubs, peeking past the silhouette
+    ctx.fillStyle = FACE;
+    for (const ex of [-5.5, 5.5]) {
+      ctx.beginPath();
+      ctx.arc(cx + ex * k, foot - 13.2 * k, 0.95 * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // the head — one chunky rounded square, most of him, filled with
+    // hair: the dark mop wraps the sides, the face patch below is the
+    // only skin showing
+    ctx.fillStyle = HAIR;
+    ctx.beginPath();
+    ctx.roundRect(cx - headW / 2, headTop, headW, headH, 3.6 * k);
+    ctx.fill();
+    ctx.stroke();
+    // tufts — small rounded lobes running along the head's contour,
+    // swept sideways (left lobes lean left, right lean right) with one
+    // little one straight up at the crown. Each is one quadratic from
+    // base to base whose control is pushed out so the curve peaks at
+    // the tip. Bases sit inside the head; only the curve is stroked,
+    // so no seam where tuft meets head.
+    // [baseX1, baseY1, tipX, tipY, baseX2, baseY2] in k units off the feet
+    const tufts: readonly (readonly [number, number, number, number, number, number])[] = [
+      [-4.9, -15.4, -6.0, -16.0, -4.6, -16.8],
+      [-4.4, -16.8, -5.2, -18.0, -3.6, -18.2],
+      [-2.8, -18.3, -2.2, -19.7, -1.0, -18.7],
+      [-0.4, -18.8, 0.1, -19.9, 0.6, -18.8],
+      [1.4, -18.6, 2.9, -19.6, 2.4, -18.2],
+      [3.5, -17.9, 5.0, -18.1, 4.2, -16.9],
+      [4.6, -16.6, 5.9, -15.9, 4.9, -15.2],
+    ];
+    ctx.fillStyle = HAIR;
+    for (const [bx1, by1, tx, ty, bx2, by2] of tufts) {
+      // control point so the quadratic's midpoint lands on the tip
+      const qx = 2 * tx - (bx1 + bx2) / 2;
+      const qy = 2 * ty - (by1 + by2) / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + bx1 * k, foot + by1 * k);
+      ctx.quadraticCurveTo(cx + qx * k, foot + qy * k, cx + bx2 * k, foot + by2 * k);
+      ctx.fill();
+      ctx.stroke();
+    }
+    // face — a light patch low on the head, no outline: hairline, not
+    // a seam
+    ctx.fillStyle = FACE;
+    ctx.beginPath();
+    ctx.roundRect(cx - 4.0 * k, foot - 15.2 * k, 8.0 * k, 4.8 * k, 2.4 * k);
+    ctx.fill();
+    // the bangs — a jagged fringe hanging over the forehead, tips
+    // stopping just above the eyes. Filled first, then only the zigzag
+    // edge is inked; the top tucks into the hair mass unseen.
+    const zig: readonly (readonly [number, number])[] = [
+      [-4.6, -15.4],
+      [-3.2, -14.0],
+      [-2.2, -15.0],
+      [-1.1, -13.8],
+      [0.0, -15.0],
+      [1.1, -13.9],
+      [2.2, -15.0],
+      [3.3, -14.0],
+      [4.6, -15.4],
+    ];
+    ctx.fillStyle = HAIR;
+    ctx.beginPath();
+    for (const [zx, zy] of zig) ctx.lineTo(cx + zx * k, foot + zy * k);
+    ctx.lineTo(cx + 4.6 * k, foot - 16.4 * k);
+    ctx.lineTo(cx - 4.6 * k, foot - 16.4 * k);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = Math.max(1, lw * 0.8);
+    ctx.beginPath();
+    for (const [zx, zy] of zig) ctx.lineTo(cx + zx * k, foot + zy * k);
+    ctx.stroke();
+    ctx.lineWidth = lw;
 
-    // marks above the head
-    if (pose === "sad") {
-      px(11, -3, 1, 2, ORANGE); // the !
-      px(11, 0, 1, 1, ORANGE);
-    }
+    // the face — stoic half-lids by default, dot eyes under determined
+    // brows when he's locked in. Features stay small; the head does the
+    // talking.
+    const eyeY = foot - 13.2 * k;
+    const feat = Math.max(1, k * 0.55); // feature line weight
+    ctx.fillStyle = OUTLINE;
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = feat;
+    ctx.lineCap = "round";
     if (pose === "panic") {
-      if (flail) px(1, -1, 1, 1, PAPER);
-      else px(11, -2, 1, 1, PAPER); // sweat
+      // wide whites, pinprick pupils, small open mouth
+      ctx.fillStyle = PAPER;
+      for (const ex of [-1.9, 1.9]) {
+        ctx.beginPath();
+        ctx.arc(cx + ex * k, eyeY, 1.0 * k, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = OUTLINE;
+      for (const ex of [-1.9, 1.9]) {
+        ctx.beginPath();
+        ctx.arc(cx + ex * k, eyeY, 0.35 * k, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.ellipse(cx, foot - 11.4 * k, 0.55 * k, 0.75 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (pose === "triumph") {
+      // ^ ^ eyes and a round grin — the one time he lets it show
+      for (const ex of [-1.9, 1.9]) {
+        ctx.beginPath();
+        ctx.arc(cx + ex * k, eyeY + 0.3 * k, 0.75 * k, Math.PI, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.beginPath();
+      ctx.arc(cx, foot - 11.6 * k, 0.9 * k, 0, Math.PI);
+      ctx.closePath();
+      ctx.fill();
+    } else if (pose === "joy") {
+      // half-lids and a small smile — buckets are expected
+      ctx.beginPath();
+      ctx.moveTo(cx - 2.6 * k, eyeY);
+      ctx.lineTo(cx - 1.0 * k, eyeY);
+      ctx.moveTo(cx + 1.0 * k, eyeY);
+      ctx.lineTo(cx + 2.6 * k, eyeY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, foot - 12.1 * k, 0.8 * k, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.stroke();
+    } else if ((pose === "aim" && dragRef.current) || pose === "watch") {
+      // locked in — dot eyes track the ball, brows angled down
+      const look = pose === "watch" ? 0.5 * k : 0;
+      for (const ex of [-1.9, 1.9]) {
+        ctx.beginPath();
+        ctx.arc(cx + ex * k + look, eyeY, 0.5 * k, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.moveTo(cx - 2.5 * k, eyeY - 1.6 * k);
+      ctx.lineTo(cx - 1.1 * k, eyeY - 1.1 * k);
+      ctx.moveTo(cx + 2.5 * k, eyeY - 1.6 * k);
+      ctx.lineTo(cx + 1.1 * k, eyeY - 1.1 * k);
+      ctx.stroke();
+      if (pose === "watch") {
+        // the little o — he can't believe it either
+        ctx.beginPath();
+        ctx.arc(cx + 0.5 * k, foot - 11.5 * k, 0.45 * k, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
+        ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
+        ctx.stroke();
+      }
+    } else {
+      // stoic half-lids and a flat mouth — he's done this before
+      ctx.beginPath();
+      ctx.moveTo(cx - 2.6 * k, eyeY);
+      ctx.lineTo(cx - 1.0 * k, eyeY);
+      ctx.moveTo(cx + 1.0 * k, eyeY);
+      ctx.lineTo(cx + 2.6 * k, eyeY);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
+      ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
+      ctx.stroke();
     }
-    if (joyish) {
-      // plus-star sparkles, alternating beats
+    // marks above the head
+    const markX = cx + 4.5 * k;
+    const markY = headY - headR - 1.6 * k;
+    if (pose === "panic") {
+      // sweat, flung side to side
+      const sxm = flail ? cx - 4.5 * k : markX;
+      ctx.fillStyle = HEADBAND;
+      ctx.beginPath();
+      ctx.ellipse(sxm, markY, 0.6 * k, 0.9 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    if (pose === "triumph") {
+      // plus-star sparkles, alternating beats — saved for the full run
       const tw = Math.floor(now / 0.55) % 2 === 0;
-      const star = (x: number, y: number) => {
-        px(x, y - 1, 1, 1, PAPER);
-        px(x - 1, y, 3, 1, PAPER);
-        px(x, y + 1, 1, 1, PAPER);
-      };
-      if (tw) star(1, -2);
-      else star(11, -3);
+      const px2 = tw ? cx - 4.5 * k : markX;
+      const py2 = tw ? markY + k : markY - k;
+      ctx.strokeStyle = YELLOW;
+      ctx.lineWidth = Math.max(1.5, k * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(px2 - k, py2);
+      ctx.lineTo(px2 + k, py2);
+      ctx.moveTo(px2, py2 - k);
+      ctx.lineTo(px2, py2 + k);
+      ctx.stroke();
     }
     if (pose === "triumph") {
       // the crown — all six, one ball
-      px(5, -2, 1, 1, YELLOW);
-      px(7, -2, 1, 1, YELLOW);
-      px(5, -1, 3, 1, YELLOW);
+      const cy = headY - headR + 0.4 * k;
+      ctx.fillStyle = YELLOW;
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.5, k * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(cx - 2.2 * k, cy);
+      ctx.lineTo(cx - 2.2 * k, cy - 2.4 * k);
+      ctx.lineTo(cx - 0.9 * k, cy - 1.2 * k);
+      ctx.lineTo(cx, cy - 2.9 * k);
+      ctx.lineTo(cx + 0.9 * k, cy - 1.2 * k);
+      ctx.lineTo(cx + 2.2 * k, cy - 2.4 * k);
+      ctx.lineTo(cx + 2.2 * k, cy);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     }
-
-    // the body — fur around the light face
-    for (let row = 0; row < CREATURE_PIX.length; row++) {
-      const line = CREATURE_PIX[row];
-      for (let col = 0; col < line.length; col++) {
-        const c = line[col];
-        if (c === ".") continue;
-        px(col, row, 1, 1, c === "f" ? FACE : BODY);
-      }
-    }
-    px(3, 1, 7, 1, HEADBAND); // the headband — he came to hoop
-
-    // eyes — small and dark, a clear row above the mouth
-    if (pose === "panic") {
-      px(3, 4, 2, 2, EYES); // wide
-      px(8, 4, 2, 2, EYES);
-    } else if (pose === "sad") {
-      px(4, 4, 1, 1, ORANGE);
-      px(8, 4, 1, 1, ORANGE);
-    } else if (!blink) {
-      const look = pose === "watch" ? 1 : 0; // eyes on the ball
-      px(4 + look, 4, 1, 1, EYES);
-      px(8 + look, 4, 1, 1, EYES);
-    }
-    // mouth — he smiles by default
-    if (joyish) {
-      px(4, 6, 1, 1, EYES);
-      px(8, 6, 1, 1, EYES);
-      px(5, 7, 3, 1, EYES); // the big open grin
-    } else if (pose === "sad") {
-      px(6, 6, 1, 1, EYES);
-      px(5, 7, 1, 1, EYES);
-      px(7, 7, 1, 1, EYES); // upside-down
-    } else if (pose === "panic") {
-      px(6, 6, 1, 2, EYES); // mouth open
-    } else {
-      // the smirk — off-center toward the hoop, one corner up. locked in.
-      px(5, 7, 2, 1, EYES);
-      px(7, 6, 1, 1, EYES);
-    }
+    ctx.lineWidth = 1;
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "miter";
   };
 
   // --- the rAF loop ---
@@ -397,6 +709,11 @@ export function Hoop() {
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
     const ctx = canvas.getContext("2d")!;
+    // the display face for canvas shout text — next/font hashes the
+    // family name, so read it off the CSS var it publishes
+    const DISPLAY =
+      getComputedStyle(document.body).getPropertyValue("--font-plex-serif").trim() ||
+      "ui-monospace, Menlo, monospace";
 
     let raf = 0;
     let lastT = performance.now() / 1000;
@@ -415,6 +732,9 @@ export function Hoop() {
 
     const frame = () => {
       raf = requestAnimationFrame(frame);
+      const { outline: OUTLINE, paper: PAPER, ball: MUSTARD, gold: YELLOW } = THEME;
+      const SKY = SKIES[levelIdxRef.current] ?? SKIES[SKIES.length - 1];
+      const night = NIGHT[levelIdxRef.current] ?? 1;
       const now = performance.now() / 1000;
       const dt = Math.min(now - lastT, 0.05);
       lastT = now;
@@ -433,13 +753,17 @@ export function Hoop() {
       const W = canvas.width / dpr;
       const H = canvas.height / dpr;
       // fit the court by both axes and center it — tall phones and wide
-      // desktops both give the game everything they have
-      const scale = Math.min(W / level.w, (H - 24) / level.h);
+      // desktops both give the game everything they have. Zoomed past a
+      // strict fit: crop a sliver of side margin and the empty sky above
+      // 4.7m (ceilings live at 4.4-4.5). The rim is the protagonist —
+      // high arcs already leave the frame, and that's drama, not a bug.
+      const scale = Math.min(W / (level.w * 0.93), (H - 20) / 4.7);
       const ox = (W - level.w * scale) / 2;
-      // wide screens pin the floor near the bottom; tall screens center
-      // the court so sky and floor split the leftover instead of the
-      // hoop sinking to the bottom of a portrait phone
-      const floorY = Math.min(H - 10, (H + level.h * scale) / 2);
+      // wide screens pin the floor near the bottom — leaving room for the
+      // 16px asphalt cap plus a band of grass; tall screens center the
+      // court so sky and floor split the leftover instead of the hoop
+      // sinking to the bottom of a portrait phone
+      const floorY = Math.min(H - 32, (H + level.h * scale) / 2);
       const sx = (x: number) => ox + x * scale;
       const sy = (y: number) => floorY - y * scale;
 
@@ -452,8 +776,11 @@ export function Hoop() {
         const slow =
           (madeRef.current && now - eventAtRef.current < 0.5) ||
           now - leanAtRef.current < 0.3;
-        shot.step(slow ? dt * 0.35 : dt);
+        const eff = slow ? dt * 0.35 : dt;
+        shot.step(eff);
         const s = shot.state;
+        // backspin reads as touch; the spin follows the ball's speed
+        ballRotRef.current += (Math.abs(s.vx) + 2) * eff * 1.6;
         // edge-detect the ball falling into the rim's airspace; a rattle
         // re-triggers on every downward pass, stretching the agony
         const inMouth =
@@ -475,10 +802,11 @@ export function Hoop() {
             sound.clank(t.speed);
             navigator.vibrate?.(12);
             lastRimAtRef.current = now;
-            sparksRef.current.push({ x: t.x, y: t.y, at: now, color: ORANGE });
+            sparksRef.current.push({ x: t.x, y: t.y, at: now, color: MUSTARD });
           } else if (t.kind === "board" || t.kind === "wall") {
             sound.board(t.speed);
-            sparksRef.current.push({ x: t.x, y: t.y, at: now, color: PAPER });
+            // ink sparks — paper ones would vanish against the paper board
+            sparksRef.current.push({ x: t.x, y: t.y, at: now, color: OUTLINE });
           } else if (t.kind === "floor") {
             sound.bounce(t.speed);
           }
@@ -527,7 +855,7 @@ export function Hoop() {
               vx: (Math.random() - 0.5) * 5,
               vy: 1 + Math.random() * 3.5,
               at: now,
-              color: [ORANGE, PAPER, YELLOW][i % 3],
+              color: [MUSTARD, PAPER, YELLOW][i % 3],
             });
           }
         }
@@ -543,140 +871,317 @@ export function Hoop() {
       const kt = now - kickAtRef.current;
       if (kt < 0.5) ctx.translate(0, 4 * kickSpring.at(kt));
 
+      // the sky — this level's hour, flat like a painted backdrop
+      ctx.fillStyle = SKY;
+      ctx.fillRect(0, 0, W, floorY);
+
+      // stars — only once the sky is dark enough to hold them
+      if (night > 0.5) {
+        const nStars = Math.round(44 * night);
+        ctx.fillStyle = PAPER;
+        for (let i = 0; i < nStars; i++) {
+          const stx = hash01(i * 2 + 1) * W;
+          const sty = hash01(i * 2 + 2) * floorY * 0.55;
+          ctx.globalAlpha =
+            (night - 0.5) * 2 * (0.3 + 0.5 * Math.abs(Math.sin(now * 0.8 + i * 2.4)));
+          ctx.fillRect(stx, sty, 2, 2);
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // clouds — flat paper blobs drifting by, gone after dark
+      if (night < 0.8) {
+        ctx.fillStyle = PAPER;
+        ctx.globalAlpha = 0.9 * (1 - night);
+        for (let i = 0; i < 4; i++) {
+          const cw = 46 + hash01(i * 9 + 2) * 50;
+          const cy = 20 + hash01(i * 9 + 3) * floorY * 0.35;
+          const cx = ((hash01(i * 9 + 4) * W + now * (4 + i * 2)) % (W + cw * 2)) - cw;
+          ctx.beginPath();
+          ctx.ellipse(cx, cy, cw * 0.55, cw * 0.2, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx - cw * 0.32, cy + cw * 0.06, cw * 0.3, cw * 0.14, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx + cw * 0.32, cy + cw * 0.06, cw * 0.32, cw * 0.15, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // the city — two flat skyline layers cut from the sky's own color,
+      // back layer tall and pale, front layer low and deep. Windows warm
+      // up as the day goes. This is a playground, and the town is home.
+      for (const [f, hMin, hMax, seed] of [
+        [0.86, 34, 88, 700], // back
+        [0.72, 16, 48, 900], // front
+      ] as const) {
+        const bc = darken(SKY, f);
+        ctx.fillStyle = bc;
+        for (let bx = -12 - seed * 0.01, bi = 0; bx < W; bi++) {
+          const bw = 30 + hash01(seed + bi * 3 + 1) * 48;
+          const bh = hMin + hash01(seed + bi * 3 + 2) * (hMax - hMin);
+          const roof = hash01(seed + bi * 3 + 3);
+          ctx.beginPath();
+          if (roof < 0.25) {
+            // rounded top
+            ctx.moveTo(bx, floorY);
+            ctx.lineTo(bx, floorY - bh + bw * 0.25);
+            ctx.arc(bx + bw / 2, floorY - bh + bw * 0.25, bw / 2, Math.PI, 0);
+            ctx.lineTo(bx + bw, floorY);
+          } else {
+            ctx.rect(bx, floorY - bh, bw, bh);
+            if (roof > 0.72) {
+              // antenna
+              ctx.rect(bx + bw * 0.42, floorY - bh - 9, 2, 9);
+            }
+          }
+          ctx.fill();
+          if (night > 0.2) {
+            // lit windows — sparse, warm
+            ctx.fillStyle = THEME.lamp;
+            ctx.globalAlpha = 0.6 * night;
+            for (let wi = 0; wi < 6; wi++) {
+              if (hash01(seed + bi * 97 + wi * 13) > 0.3) continue;
+              const wx = bx + 5 + hash01(seed + bi * 31 + wi * 7) * (bw - 11);
+              const wy = floorY - bh + 8 + hash01(seed + bi * 53 + wi * 11) * (bh - 16);
+              ctx.fillRect(wx, wy, 3, 4);
+            }
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = bc;
+          }
+          bx += bw + 3;
+        }
+      }
+
       // the rafters — one pennant per level you've ever cleared, hung
       // top-right like a small gym's banner wall. The trophy case is the
       // world, not a stat readout.
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = "round";
       for (let i = 0; i < bestDepthRef.current; i++) {
         const fx = W - 26 - i * 22;
-        ctx.strokeStyle = "#2a2d35";
         ctx.beginPath();
         ctx.moveTo(fx, 0);
         ctx.lineTo(fx, 7);
         ctx.stroke();
-        ctx.fillStyle = [PAPER, ORANGE, YELLOW][i % 3];
-        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = [PAPER, MUSTARD, YELLOW][i % 3];
         ctx.beginPath();
         ctx.moveTo(fx - 5, 7);
         ctx.lineTo(fx + 5, 7);
         ctx.lineTo(fx, 22);
         ctx.closePath();
         ctx.fill();
-        ctx.globalAlpha = 1;
+        ctx.stroke();
       }
-
-      // floor
-      ctx.strokeStyle = "#474b56";
       ctx.lineWidth = 1;
+
+      // the ground — an asphalt court cap set in bright grass, everything
+      // wearing the outline
+      ctx.fillStyle = THEME.grass;
+      ctx.fillRect(0, floorY, W, H - floorY);
+      // the asphalt cap the game is played on
+      ctx.fillStyle = THEME.asphalt;
+      ctx.fillRect(0, floorY, W, 16);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(0, floorY);
       ctx.lineTo(W, floorY);
       ctx.stroke();
-      ctx.fillStyle = "#14161b";
-      ctx.fillRect(0, floorY + 1, W, H - floorY - 1);
-      // parquet — plank seams with staggered joints on the floor's face.
-      // On tall screens the court centers and this face grows, so it has
-      // to look like wood, not dead fill.
-      ctx.strokeStyle = "#191c22";
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
-      let rowIdx = 0;
-      for (let py = floorY + 9; py < H; py += 9, rowIdx++) {
-        ctx.moveTo(0, py);
-        ctx.lineTo(W, py);
-        const off = rowIdx % 2 ? 44 : 0;
-        for (let jx = off + ((ox % 88) - 88); jx < W; jx += 88) {
-          ctx.moveTo(jx, py - 9 + 2);
-          ctx.lineTo(jx, py - 2);
+      ctx.moveTo(0, floorY + 16);
+      ctx.lineTo(W, floorY + 16);
+      ctx.stroke();
+      // grass tufts — little sprigs poking up over the court's bottom seam,
+      // fixed constellation
+      {
+        const tuftY = floorY + 16;
+        ctx.fillStyle = THEME.grass;
+        ctx.lineWidth = 2.5;
+        for (let i = 0; i < 8; i++) {
+          const blades = 2 + (i % 2);
+          let bx = (i + hash01(i * 3 + 40)) * (W / 8);
+          ctx.beginPath();
+          ctx.moveTo(bx, tuftY);
+          for (let b = 0; b < blades; b++) {
+            // each blade is a semicircle bump; arcs chain along the baseline
+            const r = 2.5 + hash01(i * 9 + b * 2 + 41) * 2;
+            ctx.arc(bx + r, tuftY, r, Math.PI, 0);
+            bx += r * 2;
+          }
+          ctx.fill();
+          ctx.stroke();
         }
+        ctx.lineWidth = 1;
       }
-      ctx.stroke();
-      // surveyor's ticks — one per meter along the floor, the court's
-      // ends a touch taller. The world is measured, and shows it.
-      ctx.strokeStyle = "#2a2d35";
+      // painted baseline along the court, and the level number at center
+      ctx.strokeStyle = PAPER;
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      for (let m = 0; m <= level.w; m++) {
-        const tx = sx(m);
-        const tall = m === 0 || m === level.w ? 7 : 3;
-        ctx.moveTo(tx, floorY);
-        ctx.lineTo(tx, floorY - tall);
-      }
+      ctx.moveTo(sx(0), floorY + 9);
+      ctx.lineTo(sx(level.w * 0.44), floorY + 9);
+      ctx.moveTo(sx(level.w * 0.56), floorY + 9);
+      ctx.lineTo(sx(level.w), floorY + 9);
       ctx.stroke();
+      ctx.fillStyle = PAPER;
+      ctx.font = `700 13px ${DISPLAY}`;
+      ctx.textAlign = "center";
+      ctx.fillText(String(level.id), sx(level.w / 2), floorY + 13);
+      ctx.textAlign = "left";
+      ctx.font = CANVAS_FONT;
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
 
       // the hoop: glass, mount, iron, net
       const rimY = sy(level.rim.y);
       const frontX = sx(level.rim.x);
       const backX = sx(level.rim.x + RIM_GAP);
       const boardX = sx(level.rim.x + RIM_GAP + BOARD_OFF);
+      // the beacon — a soft glow behind the rim after dark, and a bloom
+      // the instant a make drops through (day or night)
+      {
+        const mouthX = (frontX + backX) / 2;
+        const bt = madeRef.current ? now - eventAtRef.current : Infinity;
+        const bloom = bt < 0.45 ? 1 - bt / 0.45 : 0;
+        const glowA = (0.07 + 0.02 * Math.sin(now * 2.2)) * night + bloom * 0.22;
+        if (glowA > 0.005) {
+          const gr = scale * (0.9 + bloom * 0.8);
+          const glow = ctx.createRadialGradient(mouthX, rimY, 0, mouthX, rimY, gr);
+          glow.addColorStop(0, MUSTARD);
+          glow.addColorStop(1, withAlpha(MUSTARD, "00"));
+          ctx.globalAlpha = glowA;
+          ctx.fillStyle = glow;
+          ctx.fillRect(mouthX - gr, rimY - gr, gr * 2, gr * 2);
+          ctx.globalAlpha = 1;
+        }
+      }
       if (level.board) {
         const bTop = sy(level.rim.y + BOARD_H);
         const bBot = sy(level.rim.y - 0.05);
-        // the pole — hoops stand on something
-        ctx.strokeStyle = "#2a2d35";
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        // the pole — solid ink, a signpost holding a sign
+        const poleX = boardX + 5;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 7;
+        ctx.beginPath();
+        ctx.moveTo(poleX, bTop + 8);
+        ctx.lineTo(poleX, floorY + 4);
+        ctx.stroke();
+        // the floodlight — asleep all afternoon, burning after dark
+        const lampY = bTop - 16;
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.moveTo(boardX + 3, bTop + 8);
-        ctx.lineTo(boardX + 3, floorY);
+        ctx.moveTo(poleX, bTop + 8);
+        ctx.lineTo(poleX, lampY);
+        ctx.lineTo(poleX - 12, lampY - 5);
         ctx.stroke();
-        // glass with a body, not a wire
-        ctx.fillStyle = PAPER;
-        ctx.globalAlpha = 0.1;
-        ctx.fillRect(boardX, bTop, 4, bBot - bTop);
-        ctx.globalAlpha = 0.8;
-        ctx.lineWidth = 2;
+        // the head
+        ctx.fillStyle = night > 0.2 ? THEME.lamp : PAPER;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.moveTo(boardX, bBot);
-        ctx.lineTo(boardX, bTop);
+        ctx.rect(poleX - 21, lampY - 10, 11, 6);
+        ctx.fill();
         ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = MUTED; // mount
+        if (night > 0.2) {
+          // the beam — a soft cone falling across the hoop to the court
+          const beam = ctx.createLinearGradient(0, lampY, 0, floorY);
+          beam.addColorStop(0, withAlpha(THEME.lamp, "30"));
+          beam.addColorStop(1, withAlpha(THEME.lamp, "08"));
+          ctx.fillStyle = beam;
+          ctx.globalAlpha = night;
+          ctx.beginPath();
+          ctx.moveTo(poleX - 21, lampY - 4);
+          ctx.lineTo(poleX - 15 - scale * 2.4, floorY);
+          ctx.lineTo(poleX + scale * 0.5, floorY);
+          ctx.lineTo(poleX - 10, lampY - 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        // the board — built like the reference's wooden sign: ink line,
+        // light wood bevel, darker face inset
+        const bw2 = 11;
+        ctx.fillStyle = darken(THEME.wood, 1.14);
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.roundRect(boardX, bTop, bw2, bBot - bTop, 3);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = THEME.wood;
+        ctx.beginPath();
+        ctx.roundRect(boardX + 3, bTop + 3, bw2 - 6, bBot - bTop - 6, 2);
+        ctx.fill();
+        // mount
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
         ctx.moveTo(backX, rimY);
         ctx.lineTo(boardX, rimY);
         ctx.stroke();
+        ctx.lineWidth = 1;
       }
-      // the iron — flashes yellow the instant a make drops through
+      // the net — outlined strands and rings, and a make punches it: the
+      // whole mesh kicks down and rings back like nylon
+      {
+        const nt = madeRef.current ? now - eventAtRef.current : Infinity;
+        const kick = nt < 0.6 ? Math.exp(-nt * 7) * Math.cos(nt * 20) * 7 : 0;
+        const topW = backX - frontX;
+        const netLen = scale * 0.38 + kick;
+        const botW = topW * 0.55;
+        const midX = (frontX + backX) / 2;
+        const netB = rimY + netLen;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        for (const tt of [0, 1 / 3, 2 / 3, 1] as const) {
+          ctx.moveTo(frontX + topW * tt, rimY);
+          ctx.lineTo(midX - botW / 2 + botW * tt, netB);
+        }
+        for (const rr of [0.45, 0.82] as const) {
+          const w = topW + (botW - topW) * rr;
+          const y = rimY + netLen * rr;
+          ctx.moveTo(midX - w / 2, y);
+          ctx.lineTo(midX + w / 2, y);
+        }
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 3.5;
+        ctx.stroke();
+        ctx.strokeStyle = PAPER;
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+      }
+      // the iron — redder than the ball so contact reads, flashing gold
+      // the instant a make drops through. Drawn over the net's top edge.
       const ironC =
-        madeRef.current && now - eventAtRef.current < 0.25 ? YELLOW : ORANGE;
-      ctx.strokeStyle = ironC;
-      ctx.lineWidth = 2;
+        madeRef.current && now - eventAtRef.current < 0.25 ? YELLOW : THEME.rim;
+      ctx.lineCap = "round";
       ctx.beginPath();
       ctx.moveTo(frontX, rimY);
       ctx.lineTo(backX, rimY);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 8;
+      ctx.stroke();
+      ctx.strokeStyle = ironC;
+      ctx.lineWidth = 4.5;
       ctx.stroke();
       ctx.lineWidth = 1;
-      ctx.fillStyle = ironC;
-      ctx.beginPath();
-      ctx.arc(frontX, rimY, 2.5, 0, Math.PI * 2);
-      ctx.arc(backX, rimY, 2.5, 0, Math.PI * 2);
-      ctx.fill();
-      // net — three converging dashes
-      ctx.strokeStyle = PAPER;
-      ctx.globalAlpha = 0.35;
-      ctx.setLineDash([2, 3]);
-      const netB = sy(level.rim.y - 0.35);
-      for (const [t0, t1] of [
-        [0.06, 0.16],
-        [0.5, 0.5],
-        [0.94, 0.84],
-      ] as const) {
-        ctx.beginPath();
-        ctx.moveTo(frontX + (backX - frontX) * t0, rimY);
-        ctx.lineTo(frontX + (backX - frontX) * t1, netB);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.globalAlpha = 1;
 
-      // obstacle walls — solid slabs, not blueprint lines
-      ctx.strokeStyle = PATCH;
-      ctx.lineWidth = 7;
+      // obstacle slabs — concrete in the cartoon line
       for (const wl of level.walls) {
         ctx.beginPath();
         ctx.moveTo(sx(wl.x1), sy(wl.y1));
         ctx.lineTo(sx(wl.x2), sy(wl.y2));
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 12;
+        ctx.stroke();
+        ctx.strokeStyle = THEME.concrete;
+        ctx.lineWidth = 7;
         ctx.stroke();
       }
       ctx.lineWidth = 1;
+      ctx.lineCap = "butt";
 
       // sparks — impact bursts on iron and glass
       const aliveSparks: Spark[] = [];
@@ -715,42 +1220,112 @@ export function Hoop() {
 
       const ph = phaseRef.current;
 
-      // ball trail — the comet
-      if (trailRef.current.length > 1 && ph !== "aim") {
-        ctx.strokeStyle = ORANGE;
-        ctx.lineWidth = 2;
-        ctx.globalAlpha = 0.35;
-        ctx.beginPath();
-        trailRef.current.forEach((p, i) => {
-          if (i === 0) ctx.moveTo(sx(p.x), sy(p.y));
-          else ctx.lineTo(sx(p.x), sy(p.y));
-        });
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.lineWidth = 1;
-      }
-
-      // the ball — pixel art like the creature: 9×9 grid, orange with
-      // dark seams (cross + side arcs)
-      const drawBall = (bx: number, by: number) => {
-        const r = Math.max(4, BALL_R * scale);
-        const bk = Math.max(1, Math.round((2 * r) / 9)); // pixel size
-        // integer origin — fractional coords leave antialiasing seams
-        const x0 = Math.round(bx - 4.5 * bk);
-        const y0 = Math.round(by - 4.5 * bk);
-        for (let row = 0; row < 9; row++) {
-          const line = BALL_PIX[row];
-          for (let col = 0; col < 9; col++) {
-            const c = line[col];
-            if (c === ".") continue;
-            ctx.fillStyle = c === "S" ? "#8f3a1a" : ORANGE;
-            ctx.fillRect(x0 + col * bk, y0 + row * bk, bk, bk);
+      // ball trail — the comet, fading toward its tail. Streaks show off,
+      // NBA Jam rules: two makes deep the run is heating up (gold), four
+      // deep the ball is on fire (red edge, gold core). A miss resets the
+      // run, so the fire goes out by definition.
+      const heat = levelIdxRef.current; // consecutive makes this run
+      const tr = trailRef.current;
+      if (tr.length > 1 && ph !== "aim") {
+        ctx.lineCap = "round";
+        const layers: readonly (readonly [string, number])[] =
+          heat >= 4
+            ? [
+                [THEME.rim, 7],
+                [YELLOW, 3],
+              ]
+            : heat >= 2
+              ? [
+                  [YELLOW, 5.5],
+                  [MUSTARD, 3],
+                ]
+              : [[MUSTARD, 3]];
+        for (const [col, lw] of layers) {
+          ctx.strokeStyle = col;
+          ctx.lineWidth = lw;
+          for (let i = 1; i < tr.length; i++) {
+            ctx.globalAlpha = (i / tr.length) * 0.45;
+            ctx.beginPath();
+            ctx.moveTo(sx(tr[i - 1].x), sy(tr[i - 1].y));
+            ctx.lineTo(sx(tr[i].x), sy(tr[i].y));
+            ctx.stroke();
           }
         }
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 1;
+        ctx.lineCap = "butt";
+      }
+
+      // the ball — flat mustard leather in a thick outline, thin dark
+      // seams spinning with the flight, reference-style: no shading.
+      // Drawn at true physics size so rim reads honest.
+      const drawBall = (bx: number, by: number) => {
+        const r = Math.max(5, BALL_R * scale);
+        ctx.save();
+        ctx.translate(bx, by);
+        ctx.fillStyle = MUSTARD;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.clip();
+        // seams — a gently bowed cross and two side arcs, spinning
+        // inside the clip. Thin against the outline, like the reference.
+        ctx.rotate(-ballRotRef.current);
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(1, r * 0.09);
+        ctx.beginPath();
+        ctx.moveTo(-r, 0);
+        ctx.quadraticCurveTo(0, r * 0.35, r, 0);
+        ctx.moveTo(0, -r);
+        ctx.quadraticCurveTo(r * 0.35, 0, 0, r);
+        ctx.stroke();
+        for (const side of [-1.5, 1.5] as const) {
+          ctx.beginPath();
+          ctx.arc(side * r, 0, r * 1.05, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.restore();
+        // re-ink the leather over the clipped edges
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = Math.max(1.5, r * 0.2);
+        ctx.beginPath();
+        ctx.arc(bx, by, r, 0, Math.PI * 2);
+        ctx.stroke();
       };
 
+      // the creature — drawn before the ball, so the ball he's holding
+      // sits on top of his face, not behind his hair.
+      // pose derived, never stored
+      const pose: Pose =
+        ph === "beat"
+          ? "triumph"
+          : madeRef.current
+            ? "joy"
+            : ph === "dead"
+              ? "rest"
+              : ph === "aim" || ph === "enter"
+                ? "aim"
+                : now - lastRimAtRef.current < 0.9
+                  ? "panic"
+                  : "watch";
+      // small on purpose — he's a little guy on a big court (~0.65m tall)
+      const k = Math.max(2, Math.round((scale * 0.65) / 14));
+      drawCreature(ctx, sx(level.launch.x), floorY, k, pose, now);
+
       if (ph === "flying" && shot && !shot.state.done) {
-        drawBall(sx(shot.state.x), sy(shot.state.y));
+        const bx2 = sx(shot.state.x);
+        const by2 = sy(shot.state.y);
+        if (heat >= 2) {
+          // the heater — a flickering halo on the streaking ball
+          const hc = heat >= 4 ? THEME.rim : YELLOW;
+          const hr = Math.max(5, BALL_R * scale) * (1.8 + 0.2 * Math.sin(now * 24));
+          const halo = ctx.createRadialGradient(bx2, by2, 0, bx2, by2, hr);
+          halo.addColorStop(0, withAlpha(hc, "55"));
+          halo.addColorStop(1, withAlpha(hc, "00"));
+          ctx.fillStyle = halo;
+          ctx.fillRect(bx2 - hr, by2 - hr, hr * 2, hr * 2);
+        }
+        drawBall(bx2, by2);
       } else if (ph === "enter") {
         drawBall(sx(level.launch.x), sy(level.launch.y)); // ball in hand, waiting
       } else if (ph === "dead" && shot) {
@@ -778,28 +1353,46 @@ export function Hoop() {
           const p01 = (aim.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
           const rad = (aim.a * Math.PI) / 180;
           const len = 14 + p01 * 52;
-          // the arrow heats up with power
-          ctx.strokeStyle = p01 > 0.6 ? ORANGE : PAPER;
-          ctx.lineWidth = 2;
-          ctx.setLineDash([4, 4]);
+          // the arrow heats up with power — ink by default, red when hot
+          const aimC = p01 > 0.6 ? THEME.rim : OUTLINE;
+          const tipX = bx + Math.cos(rad) * len;
+          const tipY = by - Math.sin(rad) * len;
+          ctx.strokeStyle = aimC;
+          ctx.lineWidth = 2.5;
+          ctx.lineCap = "round";
+          ctx.setLineDash([4, 5]);
           ctx.beginPath();
           ctx.moveTo(bx, by);
-          ctx.lineTo(bx + Math.cos(rad) * len, by - Math.sin(rad) * len);
+          ctx.lineTo(tipX, tipY);
           ctx.stroke();
           ctx.setLineDash([]);
+          ctx.lineCap = "butt";
+          // arrowhead — the aim is a vector, not a string
+          ctx.fillStyle = aimC;
+          ctx.beginPath();
+          ctx.moveTo(tipX + Math.cos(rad) * 8, tipY - Math.sin(rad) * 8);
+          ctx.lineTo(tipX + Math.cos(rad + 2.5) * 6, tipY - Math.sin(rad + 2.5) * 6);
+          ctx.lineTo(tipX + Math.cos(rad - 2.5) * 6, tipY - Math.sin(rad - 2.5) * 6);
+          ctx.closePath();
+          ctx.fill();
+          // power bar — an outlined paper pill, no units, just how hard
+          ctx.fillStyle = PAPER;
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.rect(bx - 17, by + 14, 34, 7);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = p01 >= 0.999 ? YELLOW : MUSTARD;
+          ctx.fillRect(bx - 15.5, by + 15.5, 31 * p01, 4);
           ctx.lineWidth = 1;
-          // power bar — no units, just how hard
-          ctx.fillStyle = "#2a2d35";
-          ctx.fillRect(bx - 17, by + 14, 34, 5);
-          ctx.fillStyle = p01 >= 0.999 ? YELLOW : ORANGE;
-          ctx.fillRect(bx - 16, by + 15, 32 * p01, 3);
           // training wheels: until the first-ever bucket, level 1 shows
           // the opening beat of the true arc — deterministic physics keeps
           // it honest. Gone forever after the first make.
           if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
             const ghost = createShot(level, aim.p, aim.a);
-            ctx.fillStyle = PAPER;
-            ctx.globalAlpha = 0.3;
+            ctx.fillStyle = OUTLINE;
+            ctx.globalAlpha = 0.35;
             for (let i = 0; i < 6; i++) {
               ghost.step(0.055);
               ctx.fillRect(sx(ghost.state.x) - 1.5, sy(ghost.state.y) - 1.5, 3, 3);
@@ -808,30 +1401,12 @@ export function Hoop() {
           }
         } else if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
           // first-timer: nothing on screen explains the gesture — this does
-          ctx.fillStyle = PAPER;
-          ctx.globalAlpha = 0.55 + 0.3 * Math.sin(now * 3);
+          ctx.fillStyle = OUTLINE;
+          ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now * 3);
           ctx.fillText("drag back anywhere — let go to shoot", bx + 16, by - 16);
           ctx.globalAlpha = 1;
         }
       }
-
-      // the creature — drawn last so no line ever crosses him.
-      // pose derived, never stored
-      const pose: Pose =
-        ph === "beat"
-          ? "triumph"
-          : madeRef.current
-            ? "joy"
-            : ph === "dead"
-              ? "sad"
-              : ph === "aim" || ph === "enter"
-                ? "aim"
-                : now - lastRimAtRef.current < 0.9
-                  ? "panic"
-                  : "watch";
-      // small on purpose — he's a little guy in a big gym (~0.65m tall)
-      const k = Math.max(2, Math.round((scale * 0.65) / 14));
-      drawCreature(ctx, sx(level.launch.x), floorY, k, pose, now);
 
       // the shot-name pop — SWISH / BANK! / RATTLED IN / OFF THE WALL
       const pop = popRef.current;
@@ -839,13 +1414,22 @@ export function Hoop() {
         const a = now - pop.at;
         if (a > 0.95) popRef.current = null;
         else {
-          const size = Math.round(28 - 9 * Math.min(a / 0.12, 1)); // slams in
-          ctx.font = `700 ${size}px ui-monospace, Menlo, monospace`;
+          const size = Math.round(46 - 12 * Math.min(a / 0.12, 1)); // slams in
+          const px2 = sx(level.rim.x + RIM_GAP / 2);
+          const py2 = sy(level.rim.y + 0.7) - a * 18;
+          ctx.font = `700 ${size}px ${DISPLAY}`;
           ctx.textAlign = "center";
-          ctx.fillStyle = pop.color;
+          ctx.lineJoin = "round";
           ctx.globalAlpha = a < 0.55 ? 1 : 1 - (a - 0.55) / 0.4;
-          ctx.fillText(pop.text, sx(level.rim.x + RIM_GAP / 2), sy(level.rim.y + 0.7) - a * 18);
+          // sticker lettering: the outline first, the color on top
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = Math.max(5, size * 0.18);
+          ctx.strokeText(pop.text, px2, py2);
+          ctx.fillStyle = pop.color;
+          ctx.fillText(pop.text, px2, py2);
           ctx.globalAlpha = 1;
+          ctx.lineWidth = 1;
+          ctx.lineJoin = "miter";
           ctx.textAlign = "left";
           ctx.font = CANVAS_FONT;
         }
@@ -854,16 +1438,24 @@ export function Hoop() {
       // --- overlay cards: verdicts and the level intro, faded not cut ---
       const tp = now - phaseAtRef.current;
       if (ph === "enter" && tp < 0.25) {
-        // the new level fades up from the shell — no hard cut
-        ctx.fillStyle = "#111318";
+        // the new level fades up from its own sky — no hard cut
+        ctx.fillStyle = SKY;
         ctx.globalAlpha = 1 - tp / 0.25;
         ctx.fillRect(0, 0, W, H);
         ctx.globalAlpha = 1;
       }
       if (ph === "dead" && tp < 0.25) {
         // the sting — one orange blink when the run dies
-        ctx.fillStyle = ORANGE;
+        ctx.fillStyle = MUSTARD;
         ctx.globalAlpha = 0.12 * (1 - tp / 0.25);
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+      }
+      // a make warms the whole gym for a beat, not just the iron
+      const mt = madeRef.current ? now - eventAtRef.current : Infinity;
+      if (mt < 0.3) {
+        ctx.fillStyle = MUSTARD;
+        ctx.globalAlpha = 0.07 * (1 - mt / 0.3);
         ctx.fillRect(0, 0, W, H);
         ctx.globalAlpha = 1;
       }
@@ -872,14 +1464,21 @@ export function Hoop() {
         const cy = H * 0.3 - (1 - f) * 8; // drifts up as it fades in
         ctx.globalAlpha = f;
         ctx.textAlign = "center";
-        ctx.font = "700 20px ui-monospace, Menlo, monospace";
+        ctx.lineJoin = "round";
+        ctx.font = `700 26px ${DISPLAY}`;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 5;
+        ctx.strokeText(main, W / 2, cy);
         ctx.fillStyle = color;
         ctx.fillText(main, W / 2, cy);
         ctx.font = CANVAS_FONT;
-        ctx.fillStyle = MUTED;
-        ctx.fillText(sub, W / 2, cy + 18);
+        // the sub line in ink by day, paper by night
+        ctx.fillStyle = night > 0.5 ? PAPER : OUTLINE;
+        ctx.fillText(sub, W / 2, cy + 20);
         ctx.textAlign = "left";
         ctx.globalAlpha = 1;
+        ctx.lineWidth = 1;
+        ctx.lineJoin = "miter";
       };
       const run = runRef.current;
       if (ph === "cleared") {
@@ -890,11 +1489,18 @@ export function Hoop() {
           newBestRef.current ? YELLOW : PAPER,
         );
       } else if (ph === "enter") {
-        // level 6 is match point — it should feel like it
+        // level 6 is match point — it should feel like it. Deep runs get
+        // their streak named on the way in.
         const lastOne = level.id === LEVELS.length;
         card(
           lastOne ? "THE LAST SHOT" : `LEVEL ${level.id}`,
-          lastOne ? `level ${level.id} — game ${run}` : `game ${run}`,
+          lastOne
+            ? `level ${level.id} — game ${run}`
+            : heat >= 4
+              ? `game ${run} — on fire`
+              : heat >= 2
+                ? `game ${run} — heating up`
+                : `game ${run}`,
           lastOne ? YELLOW : PAPER,
         );
       }
@@ -942,6 +1548,10 @@ export function Hoop() {
   // instant replay of the aim — the proof there's no dice in the machine.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Escape") {
+        dragRef.current = null; // bail out of a bad pull
+        return;
+      }
       if (e.code !== "Space" || e.repeat) return;
       e.preventDefault();
       sound.unlock();
@@ -971,10 +1581,17 @@ export function Hoop() {
     const next = !sndOn;
     setSndOn(next);
     sound.setMuted(!next);
+    try {
+      localStorage.setItem(MUTE_KEY, next ? "0" : "1");
+    } catch {
+      // storage blocked — session-only mute
+    }
   };
 
   const run = runState?.run ?? 1;
   const bestDepth = runState?.bestDepth ?? 0;
+  // what the miss cost you — no tease when you die on the last rung
+  const nextLevel = levelIdx + 1 < LEVELS.length ? LEVELS[levelIdx + 1] : null;
 
   // the wordle move: a game collapses to one pasteable line
   const shareRun = async () => {
@@ -994,11 +1611,11 @@ export function Hoop() {
   };
 
   return (
-    <div className="flex h-dvh flex-col">
+    <div className="relative flex h-dvh flex-col">
       {/* readout bar — the only chrome above the game */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5 sm:px-5">
         <div className="flex items-baseline gap-4">
-          <h1 className="font-mono text-sm tracking-tight text-header-text">Hooping</h1>
+          <h1 className="font-display text-base font-semibold text-header-text">Hooping</h1>
           {/* the ladder — made levels in ink, the live one in ball orange */}
           <span className="flex items-center gap-[5px]" aria-hidden>
             {LEVELS.map((l, i) => {
@@ -1007,7 +1624,7 @@ export function Hoop() {
               return (
                 <span
                   key={l.id}
-                  className={`h-3 w-[3px] ${
+                  className={`h-3 w-1 rounded-full ${
                     made ? "bg-accent" : current ? "bg-accent-negative" : "bg-border"
                   }`}
                 />
@@ -1019,7 +1636,6 @@ export function Hoop() {
           </span>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs text-muted">
-          <span>GAME {run}</span>
           <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length}` : "—"}</span>
           <button
             onClick={toggleSound}
@@ -1032,12 +1648,14 @@ export function Hoop() {
         </div>
       </div>
 
+
       {/* the game — every remaining pixel. touch-none so Safari can't
           scroll mid-pull; absolute canvas so flex can't fight resize. */}
       <div ref={wrapRef} className="relative min-h-0 flex-1">
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 h-full w-full cursor-crosshair touch-none select-none bg-[#111318]"
+          style={{ backgroundColor: SKIES[levelIdx] ?? SKIES[SKIES.length - 1] }}
+          className="absolute inset-0 h-full w-full cursor-crosshair touch-none select-none"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -1049,24 +1667,33 @@ export function Hoop() {
             stops the tap from advancing. */}
         {(phase === "dead" || phase === "beat") && (
           <div
-            className="absolute inset-0 z-10 flex touch-none items-center justify-center bg-[#101216]/70 animate-[fade-in_0.2s_ease-out_0.1s_both]"
+            className="absolute inset-0 z-10 flex touch-none items-center justify-center bg-[#312d28]/40 animate-[fade-in_0.2s_ease-out_0.1s_both]"
             onPointerDown={advance}
           >
-            <div className="flex w-72 max-w-[85%] flex-col items-center gap-4 border border-border bg-[#14161b] px-8 py-7 text-center font-mono animate-[verdict-in_0.3s_ease-out_0.15s_both]">
+            <div className="flex w-72 max-w-[85%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-8 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both]">
               {phase === "dead" ? (
                 <>
-                  <h2 className="text-2xl font-bold tracking-tight text-accent-negative">
-                    GAME OVER
+                  <h2 className="font-display text-3xl font-bold text-accent-negative">
+                    Game Over
                   </h2>
                   <p className="text-xs text-muted">
                     died on level {levelIdx + 1}
                     {last ? ` — ${autopsy(last)}` : ""}
                   </p>
+                  {nextLevel && (
+                    <div className="flex w-full flex-col items-center gap-2 rounded-lg border border-border bg-well px-3 pb-2 pt-3">
+                      <p className="label">next up — level {nextLevel.id}</p>
+                      <MiniCourt level={nextLevel} />
+                      <p className="font-display text-sm font-semibold uppercase tracking-wide">
+                        {nextLevel.name}
+                      </p>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
-                  <h2 className="text-2xl font-bold tracking-tight text-warning">
-                    YOU BEAT IT
+                  <h2 className="font-display text-3xl font-bold text-warning">
+                    You Beat It
                   </h2>
                   <p className="text-xs text-muted">
                     all {LEVELS.length} levels, one ball, no misses
@@ -1079,7 +1706,7 @@ export function Hoop() {
               <button
                 onClick={shareRun}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="border border-border bg-well px-4 py-2 text-xs text-foreground hover:bg-hover-bg"
+                className="rounded-lg border-2 border-foreground bg-well px-4 py-2 text-xs font-bold text-foreground hover:bg-hover-bg"
               >
                 {copied ? "copied" : "share result"}
               </button>
@@ -1091,22 +1718,26 @@ export function Hoop() {
         )}
       </div>
 
-      {/* status line — verdicts on the left, the controls truth on the right */}
-      <div className="flex min-h-10 items-center justify-between gap-4 border-t border-border px-4 py-2 font-mono text-xs sm:px-5">
+      {/* status line — sits on the grass, continuing the canvas ground to
+          the viewport bottom, so everything on it reads in white */}
+      <div
+        className="flex min-h-10 items-center justify-between gap-4 px-4 py-2 font-mono text-xs text-[#fdfaf2] sm:px-5"
+        style={{ backgroundColor: THEME.grass }}
+      >
         {phase === "cleared" ? (
-          <span className="text-accent">level {levelIdx + 1} down</span>
+          <span>level {levelIdx + 1} down</span>
         ) : phase === "beat" ? (
-          <span className="text-accent">all {LEVELS.length} cleared, one ball</span>
+          <span>all {LEVELS.length} cleared, one ball</span>
         ) : phase === "dead" && last ? (
-          <span className="text-accent-negative">{autopsy(last)}</span>
+          <span>{autopsy(last)}</span>
         ) : phase === "flying" ? (
-          <span className="text-muted">…</span>
+          <span>…</span>
         ) : (
           // the drag lesson lives on the canvas, next to the ball —
           // this line states the stakes instead of repeating it
-          <span className="text-muted">one shot per level. a miss ends the game.</span>
+          <span>one shot per level. a miss ends the game.</span>
         )}
-        <span className="flex shrink-0 items-center gap-3 text-muted max-sm:hidden">
+        <span className="flex shrink-0 items-center gap-3 max-sm:hidden">
           <span>
             <Kbd>drag</Kbd> shoot
           </span>

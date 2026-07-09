@@ -1,26 +1,25 @@
 @import "tailwindcss";
 
-/* Design tokens ported from how-agents-think — the house style.
-   Dark only. All motion goes through lib/spring.ts — no CSS easing.
-   One swap for SKIP: the game accent is warm paper (the template's human
-   color), not mint — stone and spray read as paper marks on the draft.
-   The plunk gets the burnt orange. No mint, no blue anywhere in the game. */
+/* Flat cartoon streetball — the one theme. Paper chrome around a painted
+   world; these values mirror lib/theme.ts (the canvas palette), change
+   one, check both. All game motion goes through lib/spring.ts — no CSS
+   easing. */
 :root {
-  /* the void — outermost of the page's three fills (see app/page.tsx) */
-  --background: #101216;
-  --foreground: #d9dce0;
-  --surface: #30343d;
-  --well: #292c33;
-  --border: #474b56;
-  /* warm paper — the stone, the splashes, the score */
-  --accent: #eceae0;
-  --accent-subtle: #eceae050;
-  /* the plunk */
-  --accent-negative: #d45a2b;
-  --warning: #ffffc9;
-  --muted: #7b7e8a;
-  --header-text: #d9dce0;
-  --hover-bg: #383d47;
+  /* paper — same as THEME.paper */
+  --background: #fdfaf2;
+  /* the ink — same as THEME.outline */
+  --foreground: #312d28;
+  --surface: #f6f0e2;
+  --well: #f1ead8;
+  --border: #ddd5c2;
+  --accent: #312d28;
+  /* the iron — same as THEME.rim */
+  --accent-negative: #c15b4c;
+  /* gold, pulled down so it reads as text on paper (THEME.gold family) */
+  --warning: #cf8f0e;
+  --muted: #8a8377;
+  --header-text: #312d28;
+  --hover-bg: #ebe3ce;
 }
 
 @theme inline {
@@ -38,6 +37,7 @@
 
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
+  --font-display: var(--font-plex-serif);
 }
 
 html {
@@ -54,16 +54,16 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Selection in warm paper, not browser blue */
+/* Selection in ink, not browser blue */
 ::selection {
-  background: #eceae0;
-  color: #16181d;
+  background: #312d28;
+  color: #fdfaf2;
 }
 
-/* Keyboard focus in paper, not browser blue. focus-visible only —
+/* Keyboard focus in ink, not browser blue. focus-visible only —
    mouse clicks stay clean */
 :focus-visible {
-  outline: 1px solid var(--accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -112,5 +112,5 @@ button:not(:disabled),
   font-weight: 500;
   letter-spacing: 0.09em;
   text-transform: uppercase;
-  color: #dcdfe3;
+  color: #6f6a60;
 }
