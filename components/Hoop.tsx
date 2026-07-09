@@ -1408,16 +1408,8 @@ export function Hoop() {
         }
         ctx.lineWidth = 1;
       }
-      // painted baseline along the court, and the level number at center
-      ctx.strokeStyle = PAPER;
+      // the level number painted at center court
       ctx.globalAlpha = 0.65;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(sx(0), floorY + 9);
-      ctx.lineTo(sx(level.w * 0.44), floorY + 9);
-      ctx.moveTo(sx(level.w * 0.56), floorY + 9);
-      ctx.lineTo(sx(level.w), floorY + 9);
-      ctx.stroke();
       ctx.fillStyle = PAPER;
       ctx.font = `700 13px ${DISPLAY}`;
       ctx.textAlign = "center";

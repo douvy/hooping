@@ -14,8 +14,9 @@ export const THEME = {
   rim: "#c15b4c",
   /** gold — new bests, the crown, the game winner */
   gold: "#f2b32e",
-  /** the court cap the game is played on */
-  asphalt: "#67788a",
+  /** the court cap the game is played on — black asphalt, held a hair
+   * above the outline ink so the seam strokes still read */
+  asphalt: "#3a3d42",
   /** the backboard's plank face */
   wood: "#df9a4e",
   /** the grass the court sits in */
