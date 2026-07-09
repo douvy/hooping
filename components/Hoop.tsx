@@ -128,26 +128,38 @@ interface Aim {
   a: number;
 }
 
-// a drag only ARMS when it's a real pull: past min power (96px of pull,
-// where the bar first reads above 0) and not ending substantially
-// forward of its origin — a cancel flick back past the start point must
-// stay a cancel, especially at touch speeds. The 0.35 tolerance keeps
-// straight-down lob pulls with a little thumb drift legal.
-function isArmed(d: { sx: number; sy: number; dx: number; dy: number }): boolean {
-  const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
-  return pull > MIN_POWER * 24 && d.sx - d.dx > -0.35 * pull;
+// px of pull per m/s of power. Desktop's 24 buys precision — a longer
+// pull for the same power means finger error is a smaller fraction of
+// the aim (gauntlet sim: practiced make rate 60% → 68% per level). But
+// at 24 a full-power shot is a 312px swipe — most of a phone's width,
+// past a thumb's comfortable stroke (field report: "not a lot of room
+// to drag past level 1"). Small screens scale down until typical
+// answers (8-10.5 m/s) land at 140-185px strokes. 0.58 over 0.5:
+// jitter sims showed reachability dominates and the longer pull keeps
+// more precision. Floor keeps tiny viewports from going hair-trigger.
+function pullPxPerMps(): number {
+  const s = Math.min(window.innerWidth, window.innerHeight);
+  return Math.max(14, Math.min(24, (s * 0.58) / MAX_POWER));
 }
 
-// pull back, throw opposite. /24 not /16: a longer pull for the same power
-// means finger error is a smaller fraction of the aim — more skill, less
-// hand-dice (gauntlet sim: practiced make rate 60% → 68% per level).
+// a drag only ARMS when it's a real pull: past min power (where the bar
+// first reads above 0) and not ending substantially forward of its
+// origin — a cancel flick back past the start point must stay a cancel,
+// especially at touch speeds. The 0.35 tolerance keeps straight-down
+// lob pulls with a little thumb drift legal.
+function isArmed(d: { sx: number; sy: number; dx: number; dy: number }): boolean {
+  const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
+  return pull > MIN_POWER * pullPxPerMps() && d.sx - d.dx > -0.35 * pull;
+}
+
+// pull back, throw opposite
 function aimFromDrag(d: { sx: number; sy: number; dx: number; dy: number }): Aim {
   const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
   const vx = d.sx - d.dx;
   const vy = d.dy - d.sy; // screen y down: pulling down aims up
   const a = (Math.atan2(vy, Math.max(vx, 1)) * 180) / Math.PI;
   return {
-    p: Math.min(MAX_POWER, Math.max(MIN_POWER, pull / 24)),
+    p: Math.min(MAX_POWER, Math.max(MIN_POWER, pull / pullPxPerMps())),
     a: Math.max(5, Math.min(85, a)),
   };
 }
@@ -2036,7 +2048,7 @@ export function Hoop() {
           // arming point — the shot isn't real yet and the picture says so
           const len = armed
             ? 14 + p01 * 52
-            : 4 + Math.min(1, pullPx / (MIN_POWER * 24)) * 10;
+            : 4 + Math.min(1, pullPx / (MIN_POWER * pullPxPerMps())) * 10;
           // the arrow heats up with power — ink by default, red when hot
           const aimC = p01 > 0.6 ? THEME.rim : OUTLINE;
           const tipX = bx + Math.cos(rad) * len;
