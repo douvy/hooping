@@ -1624,10 +1624,14 @@ export function Hoop() {
 
   return (
     <div className="relative flex h-dvh flex-col">
-      {/* readout bar — the only chrome above the game */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5 sm:px-5">
+      {/* readout bar — the only chrome above the game: a deep slate blue,
+          darker than every sky */}
+      <div
+        className="flex items-center justify-between border-b px-4 py-2.5 sm:px-5"
+        style={{ backgroundColor: "#4a5f7d", borderColor: darken("#4a5f7d", 0.8) }}
+      >
         <div className="flex items-baseline gap-4">
-          <h1 className="font-display text-base font-semibold text-header-text">Hooping</h1>
+          <h1 className="font-display text-base font-semibold text-[#fdfaf2]">Hooping</h1>
           {/* the ladder — made levels in ink, the live one in ball orange */}
           <span className="flex items-center gap-[5px]" aria-hidden>
             {LEVELS.map((l, i) => {
@@ -1637,21 +1641,21 @@ export function Hoop() {
                 <span
                   key={l.id}
                   className={`h-3 w-1 rounded-full ${
-                    made ? "bg-accent" : current ? "bg-accent-negative" : "bg-border"
+                    made ? "bg-accent" : current ? "bg-accent-negative" : "bg-[#fdfaf2]/40"
                   }`}
                 />
               );
             })}
           </span>
-          <span className="font-mono text-xs text-muted max-sm:hidden">
+          <span className="font-mono text-xs text-[#fdfaf2]/70 max-sm:hidden">
             {levelIdx + 1} / {LEVELS.length}
           </span>
         </div>
-        <div className="flex items-center gap-4 font-mono text-xs text-muted">
+        <div className="flex items-center gap-4 font-mono text-xs text-[#fdfaf2]/70">
           <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length}` : "—"}</span>
           <button
             onClick={toggleSound}
-            className="flex items-center hover:text-foreground"
+            className="flex items-center hover:text-[#fdfaf2]"
             aria-pressed={sndOn}
             aria-label="sound"
           >
