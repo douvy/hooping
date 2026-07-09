@@ -337,12 +337,12 @@ export function Hoop() {
       });
       setPhaseBoth(depth === LEVELS.length ? "beat" : "cleared");
     } else {
-      // the near-miss gets named too — a rattle-out hurts more than an
+      // the near-miss gets named too — an in-and-out hurts more than an
       // airball, and the game should say so
       const rims = s.touches.filter((t) => t.kind === "rim").length;
       if (rims > 0) {
         popRef.current = {
-          text: rims >= 2 ? "RATTLED OUT" : "RIM OUT",
+          text: rims >= 2 ? "IN AND OUT" : "RIM OUT",
           at: performance.now() / 1000,
           color: THEME.ball,
         };
@@ -1195,9 +1195,9 @@ export function Hoop() {
                     : walled
                       ? "OFF THE WALL"
                       : rims >= 2
-                        ? "RATTLED IN"
+                        ? "SHOOTERS SHOOT"
                         : banked
-                          ? "BANK!"
+                          ? "BANK'S OPEN"
                           : streak >= 2
                             ? `SWISH ×${streak}`
                             : "SWISH",
@@ -1940,7 +1940,7 @@ export function Hoop() {
         }
       }
 
-      // the shot-name pop — SWISH / BANK! / RATTLED IN / OFF THE WALL
+      // the shot-name pop — SWISH / BANK'S OPEN / SHOOTERS SHOOT / OFF THE WALL
       const pop = popRef.current;
       if (pop) {
         const a = now - pop.at;
