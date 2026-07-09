@@ -360,7 +360,7 @@ export function Hoop() {
     // two-frame head turn is the oldest trick in cartooning.
     side = false,
   ) => {
-    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND, hoodie: HOODIE, pocket: POCKET, cream: CREAM, rim: RIM } = THEME;
+    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND, hoodie: HOODIE, pocket: POCKET, cream: CREAM } = THEME;
     const age = now - eventAtRef.current;
     let dy = 0;
     let dx = 0;
@@ -411,59 +411,65 @@ export function Hoop() {
       ctx.lineWidth = 1.5 * k;
       ctx.stroke();
     }
-    // shoes — chunky boots built like the reference, top to bottom:
-    // cream cuff with two paper sock-ribs, paper upper, an ink seam,
-    // then the cream sole. Everything clipped to the boot silhouette
-    // so the outline stays one clean line.
+    // shoes — copied off the pixel reference: a solid ink boot with a
+    // paper window inset below the top band (the tongue, a tan wedge
+    // folded into its toe corner), a tan stripe stepped in cream above
+    // the sole, and thin chromatic edges — blue up the heel, gold down
+    // the toe. Palette swapped to ours: ink for navy, paper/cream for
+    // the whites, his face-tan for the leather.
     for (const fx of side ? [-0.9, 0.9] : [-2.0, 2.0]) {
       const bx = cx + fx * k;
       // in profile the boot points at the rim — heel tucked, toe long
       const bx0 = bx - (side ? 1.1 : 1.8) * k;
       const bw = (side ? 3.4 : 3.6) * k;
-      const boot = () => {
-        ctx.beginPath();
-        ctx.roundRect(
-          bx0,
-          foot - 2.3 * k,
-          bw,
-          2.3 * k,
-          side
-            ? [1.0 * k, 1.3 * k, 0.9 * k, 0.35 * k]
-            : [1.1 * k, 1.1 * k, 0.45 * k, 0.45 * k],
-        );
-      };
-      boot();
-      ctx.fillStyle = PAPER;
+      const bh = 2.3 * k;
+      ctx.beginPath();
+      ctx.roundRect(
+        bx0,
+        foot - bh,
+        bw,
+        bh,
+        side
+          ? [1.0 * k, 1.3 * k, 0.9 * k, 0.35 * k]
+          : [1.1 * k, 1.1 * k, 0.45 * k, 0.45 * k],
+      );
+      ctx.fillStyle = OUTLINE;
       ctx.fill();
       ctx.save();
       ctx.clip();
-      // the cuff
+      // the chromatic edges
+      ctx.fillStyle = HEADBAND;
+      ctx.fillRect(bx0, foot - bh, 0.28 * k, bh);
+      ctx.fillStyle = YELLOW;
+      ctx.fillRect(bx0 + bw - 0.28 * k, foot - bh, 0.28 * k, bh);
+      // the paper window, inset all around
+      const wx0 = bx0 + 0.42 * k;
+      const ww = bw - 0.84 * k;
+      ctx.fillStyle = PAPER;
+      ctx.fillRect(wx0, foot - 1.95 * k, ww, 0.9 * k);
+      // tan wedge folded into the window's toe corner
+      ctx.fillStyle = FACE;
+      ctx.beginPath();
+      ctx.moveTo(wx0 + ww * 0.45, foot - 1.05 * k);
+      ctx.lineTo(wx0 + ww, foot - 1.6 * k);
+      ctx.lineTo(wx0 + ww, foot - 1.05 * k);
+      ctx.closePath();
+      ctx.fill();
+      // the tan stripe over the sole, stepped in cream on the toe side
+      ctx.fillStyle = FACE;
+      ctx.fillRect(wx0, foot - 0.75 * k, ww, 0.33 * k);
       ctx.fillStyle = CREAM;
-      ctx.fillRect(bx0, foot - 2.3 * k, bw, 0.65 * k);
-      // sock ribs — two paper ticks down the cuff
-      ctx.strokeStyle = PAPER;
-      ctx.lineWidth = 0.45 * k;
       ctx.beginPath();
-      ctx.moveTo(bx - 0.55 * k, foot - 2.3 * k);
-      ctx.lineTo(bx - 0.55 * k, foot - 1.65 * k);
-      ctx.moveTo(bx + 0.55 * k, foot - 2.3 * k);
-      ctx.lineTo(bx + 0.55 * k, foot - 1.65 * k);
-      ctx.stroke();
-      // the sole — brick red under an ink seam, like the reference boots
-      ctx.fillStyle = RIM;
-      ctx.fillRect(bx0, foot - 0.6 * k, bw, 0.6 * k);
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = Math.max(1, lw * 0.7);
-      ctx.beginPath();
-      ctx.moveTo(bx0, foot - 0.6 * k);
-      ctx.lineTo(bx0 + bw, foot - 0.6 * k);
-      ctx.stroke();
+      ctx.moveTo(wx0 + ww * 0.4, foot - 0.75 * k);
+      ctx.lineTo(wx0 + ww, foot - 0.75 * k);
+      ctx.lineTo(wx0 + ww, foot - 0.56 * k);
+      ctx.lineTo(wx0 + ww * 0.55, foot - 0.56 * k);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = Math.max(1.2, lw * 0.75); // matches the torso's lighter line
-      boot();
-      ctx.stroke();
     }
+    // the legs left strokeStyle on fur blue; everything below inks
+    ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = lw;
     // the hoodie — one fleece shape; side-on the
     // torso is chest-deep, not shoulder-wide
@@ -607,10 +613,11 @@ export function Hoop() {
         ctx.moveTo(wx - ((handY - elY) / flen) * 0.75 * k, wy + ((handX - elX) / flen) * 0.75 * k);
         ctx.lineTo(wx + ((handY - elY) / flen) * 0.75 * k, wy - ((handX - elX) / flen) * 0.75 * k);
         ctx.stroke();
-        // the mitten
+        // the mitten — frontal mittens take a lighter line, full lw
+        // reads too heavy on the small circles
         ctx.fillStyle = FACE;
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = lw;
+        ctx.lineWidth = side ? lw : lw * 0.65;
         ctx.beginPath();
         ctx.arc(handX, handY, (side ? 1.05 : 0.9) * k, 0, Math.PI * 2);
         ctx.fill();
@@ -997,7 +1004,7 @@ export function Hoop() {
     ctx.restore();
     // re-ink the leather over the clipped edges
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = Math.max(1.5, r * 0.2);
+    ctx.lineWidth = Math.max(1.2, r * 0.14);
     ctx.beginPath();
     ctx.arc(bx, by, r, 0, Math.PI * 2);
     ctx.stroke();
@@ -1742,7 +1749,7 @@ export function Hoop() {
         ctx.strokeStyle = THEME.outline;
         ctx.lineWidth = Math.max(1.2, k * 0.45);
         ctx.beginPath();
-        ctx.ellipse(bx - 0.4 * k, by + ballR * 0.92, 1.2 * k, 0.62 * k, 0.35, 0, Math.PI * 2);
+        ctx.ellipse(bx - 0.4 * k, by + ballR * 0.92, 1.55 * k, 0.85 * k, 0.35, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
       };
