@@ -118,32 +118,49 @@ export function bounce(speed: number) {
   blip(140, 0, 0.06, Math.min(0.04, 0.01 + speed * 0.004), 90, "sine");
 }
 
-/** The swish — a filtered noise burst falling through the net. The only
- * non-oscillator sound in the game; nothing synthetic says "nylon".
- * A soft pentatonic ping rides on top, climbing with level depth — the
- * tick-ladder trick: deeper buckets ring higher. */
+/** The swish — the bucket's dopamine hit, built like the real thing:
+ * a bright snap as the ball catches the cords, a longer darker whoosh
+ * as it pulls through, a low pat as the hem kicks, and a two-note
+ * pentatonic rise on top. Noise bursts because nothing synthetic says
+ * "nylon"; the reward notes climb with level depth — deeper buckets
+ * ring higher. */
 export function swish(depth = 1) {
-  blip(SCALE[Math.min(2 + depth, SCALE.length - 1)], 0.06, 0.12, 0.03, undefined, "sine");
   const c = ensure();
   const t = c.currentTime;
-  const len = 0.22;
-  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const src = c.createBufferSource();
-  src.buffer = buf;
-  const f = c.createBiquadFilter();
-  f.type = "bandpass";
-  f.Q.value = 1.2;
-  f.frequency.setValueAtTime(3400, t);
-  f.frequency.exponentialRampToValueAtTime(800, t + len);
-  const g = c.createGain();
-  g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(0.14, t + 0.015);
-  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
-  src.connect(f).connect(g).connect(master!);
-  src.start(t);
-  src.stop(t + len);
+  const nylon = (
+    at: number,
+    len: number,
+    f0: number,
+    f1: number,
+    peak: number,
+    q: number,
+  ) => {
+    const buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    const f = c.createBiquadFilter();
+    f.type = "bandpass";
+    f.Q.value = q;
+    f.frequency.setValueAtTime(f0, t + at);
+    f.frequency.exponentialRampToValueAtTime(f1, t + at + len);
+    const g = c.createGain();
+    g.gain.setValueAtTime(0, t + at);
+    g.gain.linearRampToValueAtTime(peak, t + at + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + at + len);
+    src.connect(f).connect(g).connect(master!);
+    src.start(t + at);
+    src.stop(t + at + len);
+  };
+  nylon(0, 0.08, 5200, 2600, 0.16, 2.2); // the snap
+  nylon(0.05, 0.3, 2400, 500, 0.2, 1.0); // the pull-through
+  // the hem's kick — a low pat under the nylon
+  blip(180, 0.1, 0.1, 0.035, 120, "sine");
+  // the reward — two notes rising
+  const base = Math.min(2 + depth, SCALE.length - 3);
+  blip(SCALE[base], 0.08, 0.09, 0.035, undefined, "sine");
+  blip(SCALE[base + 2], 0.17, 0.18, 0.04, undefined, "sine");
 }
 
 /** New personal best today. The only fanfare in the game. */
