@@ -163,6 +163,34 @@ export function swish(depth = 1) {
   blip(SCALE[base + 2], 0.17, 0.18, 0.04, undefined, "sine");
 }
 
+/** A pennant snapping onto the rafter rope — a short cloth whip and a
+ * bright ring, quieter than the fanfare that preceded it. */
+export function pennant() {
+  const c = ensure();
+  const t = c.currentTime;
+  // the whip — a hiss of nylon rope through the pulley
+  const len = 0.06;
+  const buf = c.createBuffer(1, Math.ceil(c.sampleRate * len), c.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const f = c.createBiquadFilter();
+  f.type = "bandpass";
+  f.Q.value = 1.4;
+  f.frequency.setValueAtTime(3800, t);
+  f.frequency.exponentialRampToValueAtTime(1600, t + len);
+  const g = c.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(0.08, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+  src.connect(f).connect(g).connect(master!);
+  src.start(t);
+  src.stop(t + len);
+  // the ring — the flag settles home
+  blip(1318, 0.04, 0.14, 0.028, undefined, "sine");
+}
+
 /** New personal best today. The only fanfare in the game. */
 export function fanfare() {
   blip(523, 0, 0.07, 0.04);

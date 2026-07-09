@@ -3,9 +3,10 @@ import assert from "node:assert/strict";
 import { isBucketMilestone, parseRun } from "./run.ts";
 
 test("parseRun: fresh player on empty or garbage", () => {
-  assert.deepEqual(parseRun(null), { run: 1, bestDepth: 0, buckets: 0 });
-  assert.deepEqual(parseRun("not json"), { run: 1, bestDepth: 0, buckets: 0 });
-  assert.deepEqual(parseRun('{"run":0}'), { run: 1, bestDepth: 0, buckets: 0 });
+  const fresh = { run: 1, bestDepth: 0, buckets: 0, wins: 0 };
+  assert.deepEqual(parseRun(null), fresh);
+  assert.deepEqual(parseRun("not json"), fresh);
+  assert.deepEqual(parseRun('{"run":0}'), fresh);
 });
 
 test("parseRun: backfills pre-buckets payloads with a bounded estimate", () => {
@@ -15,6 +16,7 @@ test("parseRun: backfills pre-buckets payloads with a bounded estimate", () => {
     run: 136,
     bestDepth: 4,
     buckets: 203,
+    wins: 0,
   });
   // never cleared anything → provably zero career makes
   assert.equal(parseRun('{"run":10,"bestDepth":0}').buckets, 0);
@@ -24,8 +26,13 @@ test("parseRun: backfills pre-buckets payloads with a bounded estimate", () => {
   assert.equal(parseRun('{"run":1,"bestDepth":0}').buckets, 0);
 });
 
+test("parseRun: backfills pre-wins payloads — bestDepth 6 proves a clear", () => {
+  assert.equal(parseRun('{"run":40,"bestDepth":6,"buckets":90}').wins, 1);
+  assert.equal(parseRun('{"run":40,"bestDepth":5,"buckets":90}').wins, 0);
+});
+
 test("parseRun: round-trips a current payload", () => {
-  const s = { run: 12, bestDepth: 5, buckets: 214 };
+  const s = { run: 12, bestDepth: 6, buckets: 214, wins: 3 };
   assert.deepEqual(parseRun(JSON.stringify(s)), s);
 });
 

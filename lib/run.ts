@@ -5,12 +5,13 @@ export interface RunState {
   run: number;
   bestDepth: number; // deepest level ever cleared
   buckets: number; // career makes, every run deposits
+  wins: number; // career full clears — each hangs a gold banner
 }
 
-const FRESH: RunState = { run: 1, bestDepth: 0, buckets: 0 };
+const FRESH: RunState = { run: 1, bestDepth: 0, buckets: 0, wins: 0 };
 
-/** Parse a stored run. Old payloads predate buckets; garbage means a
- * fresh player. */
+/** Parse a stored run. Old payloads predate buckets/wins; garbage means
+ * a fresh player. */
 export function parseRun(raw: string | null): RunState {
   if (!raw) return FRESH;
   try {
@@ -21,6 +22,9 @@ export function parseRun(raw: string | null): RunState {
       run: s.run,
       bestDepth,
       buckets: s.buckets ?? backfillBuckets(s.run, bestDepth),
+      // pre-wins payloads: bestDepth 6 proves at least one full clear —
+      // a champion shouldn't come back to bare rafters
+      wins: s.wins ?? (bestDepth >= 6 ? 1 : 0),
     };
   } catch {
     return FRESH;

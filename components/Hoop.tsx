@@ -237,6 +237,13 @@ export function Hoop() {
   const confettiRef = useRef<Confetti[]>([]);
   const popRef = useRef<{ text: string; at: number; color: string } | null>(null);
   const newBestRef = useRef(false); // this make went deeper than ever
+  const winsRef = useRef(0); // career full clears — one gold banner each
+  // the banner-raising: how many pennants already hung before the current
+  // ceremony, and when the new one(s) started their climb to the rafters
+  const ropeBaseRef = useRef(0);
+  const hoistAtRef = useRef(-Infinity);
+  const snapCountRef = useRef(0); // pennants that have snapped in (gates the sound)
+  const powerNotchRef = useRef(0); // last power-bar notch ticked — the detent gate
 
   // HUD state
   const [phase, setPhase] = useState<Phase>("aim");
@@ -258,6 +265,8 @@ export function Hoop() {
       const s = loadRun();
       bestDepthRef.current = s.bestDepth;
       bucketsRef.current = s.buckets;
+      winsRef.current = s.wins;
+      ropeBaseRef.current = s.bestDepth + s.wins; // veterans hang settled
       runRef.current = s.run;
       setRunState(s);
       const m = localStorage.getItem(MUTE_KEY) === "1";
@@ -326,11 +335,12 @@ export function Hoop() {
       const depth = levelIdxRef.current + 1;
       setRunState((prev) => {
         if (!prev) return prev;
-        // bucketsRef was bumped at the made-moment in the rAF loop
+        // bucketsRef and winsRef were bumped at the made-moment in the rAF loop
         const next = {
           ...prev,
           bestDepth: Math.max(prev.bestDepth, depth),
           buckets: bucketsRef.current,
+          wins: winsRef.current,
         };
         saveRun(next);
         return next;
@@ -834,6 +844,19 @@ export function Hoop() {
     ctx.beginPath();
     ctx.roundRect(cx - 4.0 * k, foot - 15.2 * k, 8.0 * k, 4.8 * k, 2.4 * k);
     ctx.fill();
+    // the jaw — below ear level the skin runs to the head's edge, so the
+    // hair reads as a helmet with short sideburns, not chin-straps.
+    // Clipped to the head so skin can't poke past the silhouette.
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(cx - headW / 2, headTop, headW, headH, 3.6 * k);
+    ctx.clip();
+    ctx.fillRect(cx - headW / 2, foot - 12.9 * k, headW, 2.6 * k);
+    ctx.restore();
+    // restate the ink the jaw fill covered
+    ctx.beginPath();
+    ctx.roundRect(cx - headW / 2, headTop, headW, headH, 3.6 * k);
+    ctx.stroke();
     // the bangs — a jagged fringe hanging over the forehead, tips
     // stopping just above the eyes. Filled first, then only the zigzag
     // edge is inked; the top tucks into the hair mass unseen.
@@ -1177,11 +1200,22 @@ export function Hoop() {
           sound.swish(depth); // deeper buckets ring higher
           navigator.vibrate?.([20, 30, 40]);
           const firstEver = bestDepthRef.current === 0; // the conversion moment
+          // pennants earned this make: a new-best hangs its level flag, a
+          // full clear hangs a gold championship banner — beat it for the
+          // first time and both go up. Mark the ceremony; the rafters
+          // block raises whatever's beyond ropeBase.
+          const isWin = depth === LEVELS.length;
+          if (depth > bestDepthRef.current || isWin) {
+            ropeBaseRef.current = bestDepthRef.current + winsRef.current;
+            hoistAtRef.current = now;
+            snapCountRef.current = 0;
+          }
           if (depth > bestDepthRef.current) {
             bestDepthRef.current = depth;
             newBestRef.current = true;
             sound.fanfare(); // deeper than ever before
           }
+          if (isWin) winsRef.current += 1;
           // the career meter — every make anywhere deposits one, so even a
           // run that dies on level 2 paid into something permanent
           bucketsRef.current += 1;
@@ -1346,14 +1380,29 @@ export function Hoop() {
         }
       }
 
-      // the rafters — one pennant per level you've ever cleared, strung
-      // on a sagging rope top-right like a small gym's banner wall. The
-      // trophy case is the world, not a stat readout.
+      // the rafters — the trophy case is the world, not a stat readout.
+      // One pennant per level ever cleared, then a gold championship
+      // banner per full clear, strung on a sagging rope top-right like a
+      // small gym's banner wall. New ones get RAISED: they climb out of
+      // the sky, overshoot the rope, snap on (the rope dips), and sway
+      // themselves still.
       const nBest = bestDepthRef.current;
-      if (nBest > 0) {
+      const nFlags = nBest + winsRef.current;
+      if (nFlags > 0) {
+        // a lifetime of wins keeps hanging banners — the rope crowds
+        // before it grows past roughly half the sky
+        const spacing = Math.min(22, Math.max(9, (W * 0.55 - 26) / nFlags));
         const ropeR = W - 12;
-        const ropeL = ropeR - nBest * 22 - 10;
-        const sag = 4;
+        const ropeL = ropeR - nFlags * spacing - 10;
+        const RISE = 0.8; // seconds on the rope, sky to rafter
+        const hoistStart = (i: number) =>
+          hoistAtRef.current + 0.6 + (i - ropeBaseRef.current) * 0.35;
+        // the rope dips when a flag snaps on, then rings itself out
+        let sag = 4;
+        for (let i = ropeBaseRef.current; i < nFlags; i++) {
+          const since = now - hoistStart(i) - RISE;
+          if (since > 0) sag += 2.5 * Math.exp(-3 * since) * Math.cos(7 * since);
+        }
         ctx.strokeStyle = OUTLINE;
         ctx.lineWidth = 1.5;
         ctx.lineJoin = "round";
@@ -1361,22 +1410,69 @@ export function Hoop() {
         ctx.moveTo(ropeL, 0);
         ctx.quadraticCurveTo((ropeL + ropeR) / 2, sag * 2, ropeR, 0);
         ctx.stroke();
-        // each level flies its own color, left to right — six is the gold
+        // each level flies its own color, left to right — six is the gold;
+        // every full clear hangs a swallowtail after them
         const flags = [THEME.rim, THEME.headband, MUSTARD, THEME.grass, PAPER, YELLOW];
-        for (let i = 0; i < nBest; i++) {
-          const px2 = ropeL + 16 + i * 22;
+        for (let i = 0; i < nFlags; i++) {
+          const px2 = ropeL + spacing * 0.7 + i * spacing;
           // where the rope hangs at this x — quadratic from ends at y=0
           const t = (px2 - ropeL) / (ropeR - ropeL);
           const py2 = 4 * sag * t * (1 - t);
-          const len = 13 + hash01(i * 7 + 70) * 5; // hung by hand, not machine
-          ctx.fillStyle = flags[i % flags.length];
+          const champ = i >= nBest;
+          // hung by hand, not machine
+          const len = champ ? 18 + hash01(i * 7 + 70) * 3 : 13 + hash01(i * 7 + 70) * 5;
+          // the breeze — every flag stirs a little, out of step
+          let rot = 0.04 * Math.sin(now * 0.9 + i * 1.7);
+          let yOff = 0;
+          if (i >= ropeBaseRef.current) {
+            const tr = (now - hoistStart(i)) / RISE;
+            if (tr < 0) continue; // still below, waiting its turn
+            if (tr < 1) {
+              // the climb — easeOutBack overshoots the rope, then settles
+              const u = tr - 1;
+              const c1 = 1.70158;
+              const eased = 1 + (c1 + 1) * u * u * u + c1 * u * u;
+              yOff = (1 - eased) * 34;
+              rot += (1 - tr) * 0.3 * Math.sin(tr * 12); // flutter on the way up
+            } else {
+              // snapped on — one cloth whip per flag, then sway to rest
+              const local = i - ropeBaseRef.current;
+              if (snapCountRef.current <= local) {
+                snapCountRef.current = local + 1;
+                sound.pennant();
+              }
+              const since = tr * RISE - RISE; // seconds since arrival
+              rot += 0.45 * Math.exp(-1.8 * since) * Math.sin(8 * since);
+            }
+          }
+          ctx.save();
+          ctx.translate(px2, py2 + yOff);
+          ctx.rotate(rot);
+          ctx.fillStyle = champ ? YELLOW : flags[i % flags.length];
           ctx.beginPath();
-          ctx.moveTo(px2 - 5, py2);
-          ctx.lineTo(px2 + 5, py2);
-          ctx.lineTo(px2, py2 + len);
+          if (champ) {
+            // championship banner — gold swallowtail, notched hem
+            ctx.moveTo(-5.5, 0);
+            ctx.lineTo(5.5, 0);
+            ctx.lineTo(5.5, len);
+            ctx.lineTo(0, len - 5);
+            ctx.lineTo(-5.5, len);
+          } else {
+            ctx.moveTo(-5, 0);
+            ctx.lineTo(5, 0);
+            ctx.lineTo(0, len);
+          }
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
+          if (champ) {
+            // the stitched dot — reads as a star from courtside
+            ctx.fillStyle = PAPER;
+            ctx.beginPath();
+            ctx.arc(0, 5.5, 1.7, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
         }
         ctx.lineWidth = 1;
       }
@@ -1880,6 +1976,7 @@ export function Hoop() {
         }
         const drag = dragRef.current;
         const aim = drag ? aimFromDrag(drag) : null;
+        if (!aim) powerNotchRef.current = 0; // fresh pull, fresh detents
         if (aim) {
           // drawn-bowstring tremble past 60% power
           const p01 = (aim.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
@@ -1917,18 +2014,67 @@ export function Hoop() {
           ctx.lineTo(tipX + Math.cos(rad - 2.5) * 6, tipY - Math.sin(rad - 2.5) * 6);
           ctx.closePath();
           ctx.fill();
-          // power bar — an outlined paper pill, no units, just how hard.
-          // Above the ball: the ball is held overhead, so below-the-ball
-          // put the bar straight across his face at phone zoom levels.
+          // power bar — an outlined paper pill above the ball (the ball
+          // is held overhead; below-the-ball put it across his face at
+          // phone zoom). An instrument, not a widget: quarter notches to
+          // read the draw against, a caret marking the last pull on this
+          // level, the fill heating with the arrow, and a quiet climbing
+          // tick each notch crossed — you learn a level's power by ear
+          // as much as by eye.
+          const barX = bx - 17;
+          const barY = by - ballR - 21;
+          const full = p01 >= 0.999;
           ctx.fillStyle = PAPER;
-          ctx.strokeStyle = OUTLINE;
+          ctx.strokeStyle = full ? YELLOW : OUTLINE;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.rect(bx - 17, by - ballR - 21, 34, 7);
+          ctx.roundRect(barX, barY, 34, 7, 3.5);
           ctx.fill();
           ctx.stroke();
-          ctx.fillStyle = p01 >= 0.999 ? YELLOW : MUSTARD;
-          ctx.fillRect(bx - 15.5, by - ballR - 19.5, 31 * p01, 4);
+          // the fill — clipped to the pill so the ends stay round; heat
+          // matches the arrow: ink→brick past 60%, gold at full draw
+          ctx.save();
+          ctx.beginPath();
+          ctx.roundRect(barX + 1.5, barY + 1.5, 31, 4, 2);
+          ctx.clip();
+          ctx.fillStyle = full ? YELLOW : p01 > 0.6 ? THEME.rim : MUSTARD;
+          ctx.fillRect(barX + 1.5, barY + 1.5, 31 * p01, 4);
+          // quarter notches — hairlines the thumb can come back to
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = 1;
+          ctx.globalAlpha = 0.3;
+          for (const q of [0.25, 0.5, 0.75]) {
+            const qx = barX + 1.5 + 31 * q;
+            ctx.beginPath();
+            ctx.moveTo(qx, barY + 1.5);
+            ctx.lineTo(qx, barY + 5.5);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          ctx.restore();
+          // the ghost's power — a caret under the bar at the remembered
+          // pull, partner to the dashed arrow
+          if (mem) {
+            const mx = barX + 1.5 + 31 * ((mem.p - MIN_POWER) / (MAX_POWER - MIN_POWER));
+            ctx.fillStyle = OUTLINE;
+            ctx.globalAlpha = 0.35;
+            ctx.beginPath();
+            ctx.moveTo(mx, barY + 9);
+            ctx.lineTo(mx - 2.5, barY + 13);
+            ctx.lineTo(mx + 2.5, barY + 13);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+          // detents — one tick per notch crossed on the way up, pitch
+          // climbing; pulling back down re-arms them silently
+          const notch = full ? 4 : Math.floor(p01 * 4);
+          if (notch > powerNotchRef.current) {
+            sound.tick(notch * 2);
+            navigator.vibrate?.(4);
+          }
+          powerNotchRef.current = notch;
+          ctx.strokeStyle = OUTLINE;
           ctx.lineWidth = 1;
           // training wheels: until the first-ever bucket, level 1 shows
           // the opening beat of the true arc — deterministic physics keeps
@@ -2172,6 +2318,7 @@ export function Hoop() {
   const run = runState?.run ?? 1;
   const bestDepth = runState?.bestDepth ?? 0;
   const buckets = runState?.buckets ?? 0;
+  const wins = runState?.wins ?? 0;
   // what the miss cost you — no tease when you die on the last rung
   const nextLevel = levelIdx + 1 < LEVELS.length ? LEVELS[levelIdx + 1] : null;
 
@@ -2300,7 +2447,7 @@ export function Hoop() {
     const trail = "🏀".repeat(made) + (beat ? "" : "✗");
     // the text line rides along as the caption where the platform allows
     const text = beat
-      ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\n${buckets} career buckets\nhooping.io`
+      ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\nbanner ${wins} in the rafters · ${buckets} career buckets\nhooping.io`
       : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\n${buckets} career buckets\nhooping.io`;
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
       // share() rejects when the user dismisses the sheet — that's a
@@ -2468,7 +2615,10 @@ export function Hoop() {
                     />
                     <p className="font-hand text-xl leading-tight text-foreground">
                       all {LEVELS.length} levels, one ball, no misses.
-                      <br />i watched every shot.
+                      <br />
+                      {wins > 1
+                        ? `that's banner ${wins} in the rafters.`
+                        : "i watched every shot."}
                     </p>
                     <p className="mt-1 text-right font-hand text-lg text-muted">
                       — the little guy
