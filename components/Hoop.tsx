@@ -1501,8 +1501,10 @@ export function Hoop() {
       // the net — a real diamond mesh, ink under paper like every other
       // line in the world: rim knots zigzag to a waist, waist to the hem,
       // two rows of diamonds. A make punches the whole lattice down and
-      // it rings back like nylon.
-      {
+      // it rings back like nylon. A function because the flying branch
+      // redraws it over a ball dropping through — the ball sinks behind
+      // the mesh, not over it.
+      const drawNet = () => {
         const nt = madeRef.current ? now - eventAtRef.current : Infinity;
         const kick = nt < 0.6 ? Math.exp(-nt * 7) * Math.cos(nt * 20) * 7 : 0;
         const topW = backX - frontX;
@@ -1545,7 +1547,8 @@ export function Hoop() {
         ctx.strokeStyle = PAPER;
         ctx.lineWidth = 1.6;
         ctx.stroke();
-      }
+      };
+      drawNet();
       // the iron — redder than the ball so contact reads, flashing gold
       // the instant a make drops through. Drawn over the net's top edge.
       const ironC =
@@ -1769,6 +1772,16 @@ export function Hoop() {
           ctx.fillRect(bx2 - hr, by2 - hr, hr * 2, hr * 2);
         }
         drawBall(ctx, bx2, by2, ballR, ballRotRef.current);
+        // dropping through the mouth the ball sinks behind the mesh —
+        // redraw the net over it while they overlap
+        if (
+          by2 > rimY &&
+          by2 - ballR < rimY + scale * 0.45 &&
+          bx2 > frontX - ballR &&
+          bx2 < backX + ballR
+        ) {
+          drawNet();
+        }
       } else if (ph === "enter") {
         // ball in hand, waiting
         drawBall(ctx, sx(level.launch.x), sy(level.launch.y), ballR, ballRotRef.current);
