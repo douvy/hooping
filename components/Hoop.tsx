@@ -200,11 +200,9 @@ export function Hoop() {
   // rAF-mutable state, no React involvement
   const shotRef = useRef<Shooter | null>(null);
   // id: the one pointer that owns this drag — a second thumb resting on
-  // the glass must not steal or smear the aim. coarse: finger vs mouse,
-  // for the accidental-swipe threshold.
+  // the glass must not steal or smear the aim.
   const dragRef = useRef<{
     id: number;
-    coarse: boolean;
     sx: number;
     sy: number;
     dx: number;
@@ -388,8 +386,13 @@ export function Hoop() {
     // gets one modest hop, a miss doesn't move him
     if (pose === "triumph") dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
     else if (pose === "joy") dy = age < 0.16 ? -1 : 0;
-    // holding the ball he's set — crouch into the pull, no bouncing
-    else if (pose === "aim") dy = dragRef.current ? 1 : 0;
+    // holding the ball he's set — crouch into the pull, no bouncing.
+    // Only once the pull ARMS: a ghost pull isn't a shot, so bailing
+    // out of one can't pop him back up like a hop.
+    else if (pose === "aim") {
+      const d = dragRef.current;
+      dy = d && Math.hypot(d.dx - d.sx, d.dy - d.sy) > MIN_POWER * 24 ? 1 : 0;
+    }
     else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
 
     const cx = feetX;
@@ -2062,7 +2065,12 @@ export function Hoop() {
         }
         const drag = dragRef.current;
         const aim = drag ? aimFromDrag(drag) : null;
-        if (!aim) powerNotchRef.current = 0; // fresh pull, fresh detents
+        // the pull only ARMS past min power (96px). Under that the bar
+        // reads 0 and release is a free bail-out — so the aim draws as a
+        // ghost stub until it's a real shot, and snaps solid when armed.
+        const pullPx = drag ? Math.hypot(drag.dx - drag.sx, drag.dy - drag.sy) : 0;
+        const armed = pullPx > MIN_POWER * 24;
+        if (!aim) powerNotchRef.current = -1; // fresh pull, fresh detents
         if (aim) {
           // drawn-bowstring tremble past 60% power
           const p01 = (aim.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
@@ -2077,7 +2085,9 @@ export function Hoop() {
         if (aim) {
           const p01 = (aim.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
           const rad = (aim.a * Math.PI) / 180;
-          const len = 14 + p01 * 52;
+          // unarmed pulls draw a short ghost stub that grows toward the
+          // arming point — the shot isn't real yet and the picture says so
+          const len = armed ? 14 + p01 * 52 : 4 + (pullPx / (MIN_POWER * 24)) * 10;
           // the arrow heats up with power — ink by default, red when hot
           const aimC = p01 > 0.6 ? THEME.rim : OUTLINE;
           const tipX = bx + Math.cos(rad) * len;
@@ -2086,94 +2096,102 @@ export function Hoop() {
           ctx.lineWidth = 2.5;
           ctx.lineCap = "round";
           ctx.setLineDash([4, 5]);
+          if (!armed) ctx.globalAlpha = 0.35;
           ctx.beginPath();
           ctx.moveTo(bx, by);
           ctx.lineTo(tipX, tipY);
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.lineCap = "butt";
-          // arrowhead — the aim is a vector, not a string
-          ctx.fillStyle = aimC;
-          ctx.beginPath();
-          ctx.moveTo(tipX + Math.cos(rad) * 8, tipY - Math.sin(rad) * 8);
-          ctx.lineTo(tipX + Math.cos(rad + 2.5) * 6, tipY - Math.sin(rad + 2.5) * 6);
-          ctx.lineTo(tipX + Math.cos(rad - 2.5) * 6, tipY - Math.sin(rad - 2.5) * 6);
-          ctx.closePath();
-          ctx.fill();
-          // power bar — an outlined paper pill above the ball (the ball
-          // is held overhead; below-the-ball put it across his face at
-          // phone zoom). An instrument, not a widget: quarter notches to
-          // read the draw against, a caret marking the last pull on this
-          // level, the fill heating with the arrow, and a quiet climbing
-          // tick each notch crossed — you learn a level's power by ear
-          // as much as by eye.
-          const barX = bx - 17;
-          const barY = by - ballR - 21;
-          const full = p01 >= 0.999;
-          ctx.fillStyle = PAPER;
-          ctx.strokeStyle = full ? YELLOW : OUTLINE;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.roundRect(barX, barY, 34, 7, 3.5);
-          ctx.fill();
-          ctx.stroke();
-          // the fill — clipped to the pill so the ends stay round; heat
-          // matches the arrow: ink→brick past 60%, gold at full draw
-          ctx.save();
-          ctx.beginPath();
-          ctx.roundRect(barX + 1.5, barY + 1.5, 31, 4, 2);
-          ctx.clip();
-          ctx.fillStyle = full ? YELLOW : p01 > 0.6 ? THEME.rim : MUSTARD;
-          ctx.fillRect(barX + 1.5, barY + 1.5, 31 * p01, 4);
-          // quarter notches — hairlines the thumb can come back to
-          ctx.strokeStyle = OUTLINE;
-          ctx.lineWidth = 1;
-          ctx.globalAlpha = 0.3;
-          for (const q of [0.25, 0.5, 0.75]) {
-            const qx = barX + 1.5 + 31 * q;
-            ctx.beginPath();
-            ctx.moveTo(qx, barY + 1.5);
-            ctx.lineTo(qx, barY + 5.5);
-            ctx.stroke();
-          }
           ctx.globalAlpha = 1;
-          ctx.restore();
-          // the ghost's power — a caret under the bar at the remembered
-          // pull, partner to the dashed arrow
-          if (mem) {
-            const mx = barX + 1.5 + 31 * ((mem.p - MIN_POWER) / (MAX_POWER - MIN_POWER));
-            ctx.fillStyle = OUTLINE;
-            ctx.globalAlpha = 0.35;
+          if (armed) {
+            // arrowhead — the aim is a vector, not a string; it only
+            // grows its head once a release means a shot
+            ctx.fillStyle = aimC;
             ctx.beginPath();
-            ctx.moveTo(mx, barY + 9);
-            ctx.lineTo(mx - 2.5, barY + 13);
-            ctx.lineTo(mx + 2.5, barY + 13);
+            ctx.moveTo(tipX + Math.cos(rad) * 8, tipY - Math.sin(rad) * 8);
+            ctx.lineTo(tipX + Math.cos(rad + 2.5) * 6, tipY - Math.sin(rad + 2.5) * 6);
+            ctx.lineTo(tipX + Math.cos(rad - 2.5) * 6, tipY - Math.sin(rad - 2.5) * 6);
             ctx.closePath();
             ctx.fill();
-            ctx.globalAlpha = 1;
-          }
-          // detents — one tick per notch crossed on the way up, pitch
-          // climbing; pulling back down re-arms them silently
-          const notch = full ? 4 : Math.floor(p01 * 4);
-          if (notch > powerNotchRef.current) {
-            sound.tick(notch * 2);
-            navigator.vibrate?.(4);
-          }
-          powerNotchRef.current = notch;
-          ctx.strokeStyle = OUTLINE;
-          ctx.lineWidth = 1;
-          // training wheels: until the first-ever bucket, level 1 shows
-          // the opening beat of the true arc — deterministic physics keeps
-          // it honest. Gone forever after the first make.
-          if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
-            const ghost = createShot(level, aim.p, aim.a);
-            ctx.fillStyle = OUTLINE;
-            ctx.globalAlpha = 0.35;
-            for (let i = 0; i < 6; i++) {
-              ghost.step(0.055);
-              ctx.fillRect(sx(ghost.state.x) - 1.5, sy(ghost.state.y) - 1.5, 3, 3);
+            // power bar — an outlined paper pill above the ball (the ball
+            // is held overhead; below-the-ball put it across his face at
+            // phone zoom). An instrument, not a widget: quarter notches to
+            // read the draw against, a caret marking the last pull on this
+            // level, the fill heating with the arrow, and a quiet climbing
+            // tick each notch crossed — you learn a level's power by ear
+            // as much as by eye.
+            const barX = bx - 17;
+            const barY = by - ballR - 21;
+            const full = p01 >= 0.999;
+            ctx.fillStyle = PAPER;
+            ctx.strokeStyle = full ? YELLOW : OUTLINE;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(barX, barY, 34, 7, 3.5);
+            ctx.fill();
+            ctx.stroke();
+            // the fill — clipped to the pill so the ends stay round; heat
+            // matches the arrow: ink→brick past 60%, gold at full draw
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(barX + 1.5, barY + 1.5, 31, 4, 2);
+            ctx.clip();
+            ctx.fillStyle = full ? YELLOW : p01 > 0.6 ? THEME.rim : MUSTARD;
+            ctx.fillRect(barX + 1.5, barY + 1.5, 31 * p01, 4);
+            // quarter notches — hairlines the thumb can come back to
+            ctx.strokeStyle = OUTLINE;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.3;
+            for (const q of [0.25, 0.5, 0.75]) {
+              const qx = barX + 1.5 + 31 * q;
+              ctx.beginPath();
+              ctx.moveTo(qx, barY + 1.5);
+              ctx.lineTo(qx, barY + 5.5);
+              ctx.stroke();
             }
             ctx.globalAlpha = 1;
+            ctx.restore();
+            // the ghost's power — a caret under the bar at the remembered
+            // pull, partner to the dashed arrow
+            if (mem) {
+              const mx = barX + 1.5 + 31 * ((mem.p - MIN_POWER) / (MAX_POWER - MIN_POWER));
+              ctx.fillStyle = OUTLINE;
+              ctx.globalAlpha = 0.35;
+              ctx.beginPath();
+              ctx.moveTo(mx, barY + 9);
+              ctx.lineTo(mx - 2.5, barY + 13);
+              ctx.lineTo(mx + 2.5, barY + 13);
+              ctx.closePath();
+              ctx.fill();
+              ctx.globalAlpha = 1;
+            }
+            // detents — one tick per notch crossed on the way up, pitch
+            // climbing, starting with the arming click at notch 0;
+            // pulling back down re-arms them silently
+            const notch = full ? 4 : Math.floor(p01 * 4);
+            if (notch > powerNotchRef.current) {
+              sound.tick(notch * 2);
+              navigator.vibrate?.(4);
+            }
+            powerNotchRef.current = notch;
+            ctx.strokeStyle = OUTLINE;
+            ctx.lineWidth = 1;
+            // training wheels: until the first-ever bucket, level 1 shows
+            // the opening beat of the true arc — deterministic physics keeps
+            // it honest. Gone forever after the first make.
+            if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
+              const ghost = createShot(level, aim.p, aim.a);
+              ctx.fillStyle = OUTLINE;
+              ctx.globalAlpha = 0.35;
+              for (let i = 0; i < 6; i++) {
+                ghost.step(0.055);
+                ctx.fillRect(sx(ghost.state.x) - 1.5, sy(ghost.state.y) - 1.5, 3, 3);
+              }
+              ctx.globalAlpha = 1;
+            }
+          } else {
+            powerNotchRef.current = -1; // release here is a free bail-out
           }
         } else if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
           // first-timer: nothing on screen explains the gesture — this
@@ -2325,7 +2343,6 @@ export function Hoop() {
     e.currentTarget.setPointerCapture(e.pointerId);
     dragRef.current = {
       id: e.pointerId,
-      coarse: e.pointerType !== "mouse",
       sx: e.clientX,
       sy: e.clientY,
       dx: e.clientX,
@@ -2346,10 +2363,11 @@ export function Hoop() {
     dragRef.current = null;
     if (phaseRef.current !== "aim") return;
     const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
-    // no free throws — a tap is not a shot. Fingers get a fatter dead
-    // zone than mice: a 15px stray brush must not spend the run's one
-    // ball (min power lives at 96px of pull, so nothing real is lost)
-    if (pull < (d.coarse ? 25 : 10)) return;
+    // a pull that never armed the bar is not a shot — min power lives at
+    // 96px, under that the readout is a ghost and release is a free
+    // bail-out. Covers stray taps AND regretted angles: ease back toward
+    // the ball until the arrow ghosts, let go, keep your run.
+    if (pull <= MIN_POWER * 24) return;
     shoot(aimFromDrag(d));
   };
 
