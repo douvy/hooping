@@ -36,6 +36,7 @@
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains-mono);
   --font-display: var(--font-plex-serif);
+  --font-hand: var(--font-caveat);
 }
 
 html {
@@ -98,6 +99,43 @@ button:not(:disabled),
   from {
     opacity: 0;
     transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* the champion's panel — panel chrome like verdict-in, so CSS runs it.
+   letter-pop stamps each letter of the banner in on its own beat;
+   banner-sway then hangs the line from its nail; note-in slaps the
+   little guy's note onto the paper. */
+@keyframes letter-pop {
+  from {
+    opacity: 0;
+    transform: translateY(0.5em) scale(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes banner-sway {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(1.6deg);
+  }
+  75% {
+    transform: rotate(-1.6deg);
+  }
+}
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: scale(1.5) rotate(4deg);
   }
   to {
     opacity: 1;

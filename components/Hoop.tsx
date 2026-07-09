@@ -9,7 +9,7 @@
 // clear all six, and the red ! when the run dies.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Volume2, VolumeX } from "lucide-react";
+import { Check, Share2, Volume2, VolumeX } from "lucide-react";
 import {
   BALL_R,
   BOARD_H,
@@ -142,7 +142,10 @@ interface Spark {
   color: string;
 }
 
-// pure celebration pixels — visual only, never touches the physics
+// pure celebration pixels — visual only, never touches the physics.
+// size 3 is the square pixel burst off the rim; bigger pieces are paper —
+// they tumble (rot/vr) and fall against drag, which is what makes the
+// victory rain flutter instead of plummet.
 interface Confetti {
   x: number;
   y: number;
@@ -150,6 +153,13 @@ interface Confetti {
   vy: number;
   at: number;
   color: string;
+  size: number;
+  rot: number;
+  vr: number;
+  /** seconds before it fades — falling off the screen culls it sooner */
+  life: number;
+  /** air resistance; 0 keeps the original ballistic burst */
+  drag: number;
 }
 
 // enter = the level-intro card; presses are ignored until it hands off to aim
@@ -344,8 +354,13 @@ export function Hoop() {
     k: number,
     pose: Pose,
     now: number,
+    // side: true draws the profile — feet, chest and eyes toward the
+    // hoop. Used the whole time the ball is live (set point + flight);
+    // reactions play to the camera. A snap turn, no tween — the
+    // two-frame head turn is the oldest trick in cartooning.
+    side = false,
   ) => {
-    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND } = THEME;
+    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND, hoodie: HOODIE, pocket: POCKET, cream: CREAM, rim: RIM } = THEME;
     const age = now - eventAtRef.current;
     let dy = 0;
     let dx = 0;
@@ -353,14 +368,15 @@ export function Hoop() {
     // gets one modest hop, a miss doesn't move him
     if (pose === "triumph") dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
     else if (pose === "joy") dy = age < 0.16 ? -1 : 0;
-    else if (pose === "aim" && dragRef.current) dy = 1; // crouch into the pull
+    // holding the ball he's set — crouch into the pull, no bouncing
+    else if (pose === "aim") dy = dragRef.current ? 1 : 0;
     else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
     if (pose === "panic") dx = Math.floor(now / 0.09) % 2 ? 1 : -1; // tremble
 
     const cx = feetX + dx * k;
     const foot = floorY + dy * k;
     // Construction: one chunky rounded-square head, tiny stoic features
-    // low on the face, a white hoodie bunched off the left shoulder,
+    // low on the face, a green hoodie bunched off the left shoulder,
     // jointed arms. Few shapes, all wearing the same line — less plush
     // toy, more point guard.
     const headW = 10.4 * k;
@@ -368,13 +384,13 @@ export function Hoop() {
     const headY = foot - 14.6 * k;
     const headR = headH / 2; // the marks above hang off this
     const headTop = headY - headR;
-    const lw = Math.max(1.5, k * 0.9); // his cartoon line scales with him
+    const lw = Math.max(1.5, k * 0.55); // his cartoon line scales with him
 
     // his shadow — stays on the ground when he hops, like the reference's
     // flat unblurred pools under every object
     ctx.fillStyle = withAlpha(OUTLINE, "2b");
     ctx.beginPath();
-    ctx.ellipse(cx, floorY + 2, 4.5 * k, 1.1 * k, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, floorY + 2, (side ? 3.6 : 4.5) * k, 1.1 * k, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.strokeStyle = OUTLINE;
@@ -382,10 +398,11 @@ export function Hoop() {
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
 
-    // legs — longer than a plush toy's, still chunky
-    for (const lx of [-1.8, 1.8]) {
+    // legs — longer than a plush toy's, still chunky. In profile they
+    // tuck together, the near leg mostly covering the far one.
+    for (const lx of side ? [-0.9, 0.9] : [-1.8, 1.8]) {
       ctx.beginPath();
-      ctx.moveTo(cx + lx * k, foot - 4.4 * k);
+      ctx.moveTo(cx + lx * k, foot - 8.2 * k);
       ctx.lineTo(cx + lx * k, foot - 1.2 * k);
       ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = 1.5 * k + lw * 1.6;
@@ -394,55 +411,109 @@ export function Hoop() {
       ctx.lineWidth = 1.5 * k;
       ctx.stroke();
     }
-    // shoes — little white outlined sneakers
-    ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = lw;
-    ctx.fillStyle = PAPER;
-    for (const fx of [-2.0, 2.0]) {
+    // shoes — chunky boots built like the reference, top to bottom:
+    // cream cuff with two paper sock-ribs, paper upper, an ink seam,
+    // then the cream sole. Everything clipped to the boot silhouette
+    // so the outline stays one clean line.
+    for (const fx of side ? [-0.9, 0.9] : [-2.0, 2.0]) {
+      const bx = cx + fx * k;
+      // in profile the boot points at the rim — heel tucked, toe long
+      const bx0 = bx - (side ? 1.1 : 1.8) * k;
+      const bw = (side ? 3.4 : 3.6) * k;
+      const boot = () => {
+        ctx.beginPath();
+        ctx.roundRect(
+          bx0,
+          foot - 2.3 * k,
+          bw,
+          2.3 * k,
+          side
+            ? [1.0 * k, 1.3 * k, 0.9 * k, 0.35 * k]
+            : [1.1 * k, 1.1 * k, 0.45 * k, 0.45 * k],
+        );
+      };
+      boot();
+      ctx.fillStyle = PAPER;
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      // the cuff
+      ctx.fillStyle = CREAM;
+      ctx.fillRect(bx0, foot - 2.3 * k, bw, 0.65 * k);
+      // sock ribs — two paper ticks down the cuff
+      ctx.strokeStyle = PAPER;
+      ctx.lineWidth = 0.45 * k;
       ctx.beginPath();
-      ctx.ellipse(cx + fx * k, foot - 0.85 * k, 1.75 * k, 1.0 * k, 0, 0, Math.PI * 2);
+      ctx.moveTo(bx - 0.55 * k, foot - 2.3 * k);
+      ctx.lineTo(bx - 0.55 * k, foot - 1.65 * k);
+      ctx.moveTo(bx + 0.55 * k, foot - 2.3 * k);
+      ctx.lineTo(bx + 0.55 * k, foot - 1.65 * k);
+      ctx.stroke();
+      // the sole — brick red under an ink seam, like the reference boots
+      ctx.fillStyle = RIM;
+      ctx.fillRect(bx0, foot - 0.6 * k, bw, 0.6 * k);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1, lw * 0.7);
+      ctx.beginPath();
+      ctx.moveTo(bx0, foot - 0.6 * k);
+      ctx.lineTo(bx0 + bw, foot - 0.6 * k);
+      ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1.2, lw * 0.75); // matches the torso's lighter line
+      boot();
+      ctx.stroke();
+    }
+    ctx.lineWidth = lw;
+    // the hoodie — one fleece shape; side-on the
+    // torso is chest-deep, not shoulder-wide
+    ctx.fillStyle = HOODIE;
+    ctx.beginPath();
+    // square bottom corners — the hem over the pants is a straight
+    // line. Legs read leg-length by raising the hem; the torso also
+    // grows upward (shoulders at -13.2) so the chest isn't a stub
+    // either — the head and arms ride up with it. Both views share the
+    // proportions; only the chest depth differs.
+    if (side) ctx.roundRect(cx - 2.1 * k, foot - 13.2 * k, 4.2 * k, 5.6 * k, [1.7 * k, 1.7 * k, 0, 0]);
+    else ctx.roundRect(cx - 3.2 * k, foot - 13.2 * k, 6.4 * k, 5.6 * k, [1.7 * k, 1.7 * k, 0, 0]);
+    ctx.fill();
+    ctx.lineWidth = Math.max(1.2, lw * 0.75); // big flat shape, lighter line
+    ctx.stroke();
+    ctx.lineWidth = lw;
+    // the kangaroo pocket — one stop darker, low on the hem; the
+    // profile keeps the fleece clean
+    if (!side) {
+      ctx.fillStyle = POCKET;
+      ctx.beginPath();
+      ctx.roundRect(cx - 1.7 * k, foot - 9.8 * k, 3.4 * k, 2.2 * k, 0.6 * k);
       ctx.fill();
       ctx.stroke();
     }
-    // the hood — bunched off to one side (his left; he faces the hoop),
-    // drawn behind the body so only the outer bulge shows: one wide
-    // puffy lobe sitting at the shoulder, its top level with the top of
-    // the hoodie. Nothing on the right.
-    ctx.beginPath();
-    ctx.ellipse(cx - 5.3 * k, foot - 9.0 * k, 3.5 * k, 2.2 * k, 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    // the hoodie — one paper-white shape over the hood
-    ctx.beginPath();
-    ctx.roundRect(cx - 3.2 * k, foot - 10.2 * k, 6.4 * k, 6.6 * k, 1.7 * k);
-    ctx.fill();
-    ctx.stroke();
-    // the hood's edge — two ink lines starting on the lobe, curving in
-    // toward the head, passing under the chin and wrapping around to
-    // the other side. The fabric is the same white as the body; a
-    // filled shape here reads as a plate, so only the folds are drawn.
-    ctx.lineWidth = Math.max(1, lw * 0.8);
-    ctx.beginPath();
-    ctx.moveTo(cx - 6.4 * k, foot - 10.2 * k);
-    ctx.quadraticCurveTo(cx - 4.6 * k, foot - 11.0 * k, cx - 2.0 * k, foot - 10.6 * k);
-    ctx.quadraticCurveTo(cx + 1.8 * k, foot - 10.4 * k, cx + 3.2 * k, foot - 8.8 * k);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(cx - 5.4 * k, foot - 8.4 * k);
-    ctx.quadraticCurveTo(cx - 3.0 * k, foot - 9.4 * k, cx - 0.8 * k, foot - 9.2 * k);
-    ctx.quadraticCurveTo(cx + 1.6 * k, foot - 9.0 * k, cx + 2.8 * k, foot - 7.6 * k);
-    ctx.stroke();
-    // a fold in the fabric, low on the torso
-    ctx.lineWidth = Math.max(1, lw * 0.7);
-    ctx.beginPath();
-    ctx.arc(cx - 0.6 * k, foot - 5.2 * k, 1.6 * k, Math.PI * 0.15, Math.PI * 0.6);
-    ctx.stroke();
+    // drawstrings — blue cords off the collar (the reference's scarf
+    // blue; paper would sink into the white fleece), ink aglets.
+    // Frontal only — in profile the shooting arm eclipses the cord and
+    // the leftover sliver reads as a stray blue speck.
+    ctx.strokeStyle = HEADBAND;
+    ctx.lineWidth = 0.5 * k;
+    for (const sxo of side ? [] : [-0.9, 0.9]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + sxo * k, foot - 12.4 * k);
+      ctx.lineTo(cx + sxo * k, foot - 11.2 * k);
+      ctx.stroke();
+      ctx.fillStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.arc(cx + sxo * k, foot - 11.05 * k, 0.28 * k, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = lw;
     // arms — shoulder, elbow, hand: jointed, so poses read athletic.
-    // Drawn before the head so raised mittens sit against it.
+    // Shooting form (aim, watch) draws them after the head — forearms
+    // cross in front of the face holding a real set shot. Everything
+    // else keeps them behind the body.
     const flail = Math.floor(now / 0.14) % 2 === 0;
     // [elbowX, elbowY, handX, handY] per side, in k units off the feet
-    const arms: readonly (readonly [number, number, number, number])[] =
+    let arms: readonly (readonly [number, number, number, number])[] =
       pose === "triumph"
         ? [
             [-5.0, -12.5, -6.4, -17.5],
@@ -455,8 +526,8 @@ export function Hoop() {
             ] // one fist up, off arm easy — a made shot is the job
           : pose === "panic"
             ? [
-                [-5.0, -8.6, -7.4, flail ? -9.4 : -7.4],
-                [5.0, -8.6, 7.4, flail ? -7.4 : -9.4],
+                [-5.0, -10.2, -7.4, flail ? -11.0 : -9.0],
+                [5.0, -10.2, 7.4, flail ? -9.0 : -11.0],
               ] // flailing
             : pose === "rest"
               ? [
@@ -469,45 +540,221 @@ export function Hoop() {
                     [5.6, -12.0, 7.4, -16.5],
                   ] // the follow-through, held — off hand low, shooting hand high
                 : [
-                    [-4.6, -13.6, -1.9, -18.3],
-                    [5.2, -13.2, 2.6, -18.1],
-                  ]; // aim: both hands up over his head, under the ball — proper form
-    for (const [ex2, ey2, hx, hy] of arms) {
-      const ax = cx + Math.sign(hx) * 3.0 * k; // the shoulder
-      const ay = foot - 8.8 * k;
-      const elX = cx + ex2 * k;
-      const elY = foot + ey2 * k;
-      const handX = cx + hx * k;
-      const handY = foot + hy * k;
-      ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      ctx.lineTo(elX, elY);
-      ctx.lineTo(handX, handY);
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = 1.5 * k + lw * 1.6;
-      ctx.stroke();
-      ctx.strokeStyle = PAPER; // sleeves
-      ctx.lineWidth = 1.5 * k;
-      ctx.stroke();
-      // the wristband — a blue tick across the forearm
-      const flen = Math.hypot(handX - elX, handY - elY) || 1;
-      const wx = elX + (handX - elX) * 0.7;
-      const wy = elY + (handY - elY) * 0.7;
-      ctx.strokeStyle = HEADBAND;
-      ctx.lineWidth = 0.8 * k;
-      ctx.beginPath();
-      ctx.moveTo(wx - ((handY - elY) / flen) * 0.75 * k, wy + ((handX - elX) / flen) * 0.75 * k);
-      ctx.lineTo(wx + ((handY - elY) / flen) * 0.75 * k, wy - ((handX - elX) / flen) * 0.75 * k);
-      ctx.stroke();
-      // the mitten
+                    [-2.8, -14.2, 0.3, -19.9],
+                    [3.2, -13.8, 2.6, -19.7],
+                  ]; // aim: the set point — guide hand on the ball's side,
+                     // shooting elbow under it, forearm near vertical.
+                     // Hands stop short; the mitten radius closes the gap.
+    // profile shooting form — traced off the Curry frame: both arms go
+    // up the front. The guide arm's elbow sits just forward of the
+    // chin, its short forearm near vertical to the ball's near-low
+    // side, mostly eclipsed by the shooting arm (drawn second, so it
+    // covers). The shooting arm swings out under the chin, elbow
+    // dropped low past the face, forearm up the front edge to the
+    // ball. Nothing crosses the face or pokes behind the back.
+    if (side && pose === "aim")
+      arms = [
+        [0.3, -13.0, 2.8, -19.3],
+        [5.0, -11.0, 3.9, -19.8], // upper arm longer, up and forward;
+        // forearm leans back toward the head to the ball, like the frame
+      ];
+    else if (side && pose === "watch")
+      arms = [
+        [0.8, -12.0, 2.2, -14.8], // guide hand stays up through the
+        // follow-through, half-raised under the shooting arm
+        [2.8, -12.5, 6.6, -16.2], // shooting arm out toward the rim, held
+      ];
+    const drawArms = () => {
+      arms.forEach(([ex2, ey2, hx, hy], i) => {
+        // first entry is always his left arm — the hand may cross the
+        // midline (guide hand on the ball), so side comes from order.
+        // In profile the shoulders stack up near the chest's midline.
+        const ax = cx + (i === 0 ? -3.0 : 3.0) * (side ? 0.3 : 1) * k; // the shoulder
+        const ay = foot - 11.4 * k; // shoulders at the taller chest's top
+        const elX = cx + ex2 * k;
+        const elY = foot + ey2 * k;
+        const handX = cx + hx * k;
+        const handY = foot + hy * k;
+        // profile set point: the guide arm's shoulder is eclipsed by
+        // the body — draw only the forearm, emerging from behind the
+        // head (the head draws after arms and covers the elbow end)
+        const hideUpper = side && pose === "aim" && i === 0;
+        ctx.beginPath();
+        if (hideUpper) {
+          ctx.moveTo(elX, elY);
+        } else {
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(elX, elY);
+        }
+        ctx.lineTo(handX, handY);
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 1.5 * k + lw * 1.6;
+        ctx.stroke();
+        ctx.strokeStyle = HOODIE; // sleeves
+        ctx.lineWidth = 1.5 * k;
+        ctx.stroke();
+        // the wristband — a blue tick across the forearm (paper would
+        // sink into the white sleeve). On the profile guide arm it
+        // rides right at the mitten so no sleeve shows between band
+        // and ball.
+        const flen = Math.hypot(handX - elX, handY - elY) || 1;
+        const wfrac = hideUpper ? 0.88 : 0.7;
+        const wx = elX + (handX - elX) * wfrac;
+        const wy = elY + (handY - elY) * wfrac;
+        ctx.strokeStyle = HEADBAND;
+        ctx.lineWidth = 0.8 * k;
+        ctx.beginPath();
+        ctx.moveTo(wx - ((handY - elY) / flen) * 0.75 * k, wy + ((handX - elX) / flen) * 0.75 * k);
+        ctx.lineTo(wx + ((handY - elY) / flen) * 0.75 * k, wy - ((handX - elX) / flen) * 0.75 * k);
+        ctx.stroke();
+        // the mitten
+        ctx.fillStyle = FACE;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.arc(handX, handY, (side ? 1.05 : 0.9) * k, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+    };
+    // frontal shooting form crosses the forearms in front of the face;
+    // in profile the arms go behind the head instead (see above)
+    const armsInFront = (pose === "aim" || pose === "watch") && !side;
+    if (!armsInFront) drawArms();
+    if (side) {
+      // --- the profile head, traced off the reference: a round skull
+      // under a smooth hair helmet — no tufts, no headband. Hair is a
+      // cap on the crown plus a narrow strip down the back; the big
+      // tan face owns the whole lower half. Fringe
+      // teeth over the forehead, the ear a nub in the hairline.
+      // narrower than the frontal mop — the reference head is nearly
+      // round, and it leaves room for the shooting arm to read
+      const rxs = 4.4 * k;
+      // the whole head (features, ear, collar) was traced at chibi
+      // size; the reference head is way smaller on the body, so scale
+      // the lot down around the chin, where the head sockets into the
+      // collar. Lines inside scale too — smaller head, finer line.
+      const HS = 0.72;
+      const chinY = foot - 10.5 * k;
+      ctx.save();
+      // nudged back off the chest's midline — clears room up front for
+      // the shooting arm
+      // -3.0k: the head rides up with the taller profile torso
+      ctx.translate(cx - 0.6 * k, chinY - 3.0 * k);
+      ctx.scale(HS, HS);
+      ctx.translate(-cx, -chinY);
+      const skull = () => {
+        ctx.beginPath();
+        // the ellipse keeps the crown, back and nape; the front-lower
+        // quadrant is hand-drawn as a marshmallow jaw — fuller and
+        // flatter under the eye, dropping lower than the ellipse did.
+        // One path, so fill, clip and stroke all wear the same edge.
+        ctx.ellipse(cx, headY, rxs, headR, 0, 2.1, 0.15);
+        ctx.quadraticCurveTo(cx + 4.55 * k, foot - 12.2 * k, cx + 4.0 * k, foot - 11.2 * k);
+        // an extra quad through the jaw corner keeps it round, not pointy
+        ctx.quadraticCurveTo(cx + 3.6 * k, foot - 10.45 * k, cx + 2.7 * k, foot - 10.25 * k);
+        ctx.quadraticCurveTo(cx + 1.5 * k, foot - 10.1 * k, cx - 0.4 * k, foot - 10.5 * k);
+        ctx.quadraticCurveTo(cx - 1.5 * k, foot - 10.6 * k, cx - 2.22 * k, foot - 10.89 * k);
+        ctx.closePath();
+      };
+      skull();
+      ctx.fillStyle = HAIR;
+      ctx.fill();
+      // the hairline — two chunky fringe teeth down the forehead, the
+      // front one hanging right over the eye, then the helmet's bottom
+      // edge sagging back across the skull to the nape. The face owns
+      // everything below it. Both ends land on the skull's own ink and
+      // disappear. Doubles as the face fill's inner boundary.
+      const hairlinePath = () => {
+        const teeth: readonly (readonly [number, number])[] = [
+          [4.0, -16.4],
+          [3.5, -14.2],
+          [2.8, -15.6],
+          [2.0, -14.3],
+          [1.35, -15.3],
+          [0.5, -13.5],
+        ];
+        for (const [px, py] of teeth) ctx.lineTo(cx + px * k, foot + py * k);
+        // the back tail drops just behind the ear to the collar, so the
+        // nape stays hair — ending it further back left a tan wedge
+        // between hairline and collar. The end hides under the collar.
+        ctx.quadraticCurveTo(cx - 1.6 * k, foot - 13.4 * k, cx - 2.2 * k, foot - 11.6 * k);
+      };
+      // the face — clipped to the skull so its outer edge IS the head
+      // edge; the polygon just has to overshoot the front-bottom
+      ctx.save();
+      skull();
+      ctx.clip();
       ctx.fillStyle = FACE;
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = lw;
       ctx.beginPath();
-      ctx.arc(handX, handY, 1.05 * k, 0, Math.PI * 2);
+      hairlinePath();
+      ctx.lineTo(cx - 5.0 * k, foot - 9.4 * k);
+      ctx.lineTo(cx + 6.4 * k, foot - 9.6 * k);
+      ctx.lineTo(cx + 6.4 * k, foot - 16.4 * k);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      // one clean outline over everything (the face fill ate the inner
+      // half of it up front)
+      skull();
+      ctx.stroke();
+      // ink only the hairline edge
+      ctx.lineWidth = Math.max(1, lw * 0.8);
+      ctx.beginPath();
+      hairlinePath();
+      ctx.stroke();
+      // the ear — the hairline curls into a round lobe at the face's
+      // back corner and ENDS there, like the reference: the arc opens
+      // up-right into the cheek, bulge pointing down-left. Stroke only;
+      // the skin behind it is already the face fill.
+      ctx.beginPath();
+      ctx.arc(cx - 0.5 * k, foot - 12.65 * k, 0.75 * k, -Math.PI * 0.675, Math.PI * 0.175, true);
+      ctx.stroke();
+      // no shine swoosh in profile — the crown stays one flat hair color
+      ctx.lineWidth = lw;
+      // the hood collar — drawn over the head like the reference: a
+      // teardrop wrapping the nape, rounded crown at the back rising
+      // to the ear, tapering to a tip at the chin that stops at the
+      // hoodie's front edge
+      ctx.fillStyle = HOODIE;
+      ctx.beginPath();
+      ctx.moveTo(cx + 2.2 * k, foot - 10.0 * k); // the tip
+      // bottom edge running back
+      ctx.quadraticCurveTo(cx - 0.5 * k, foot - 8.5 * k, cx - 3.4 * k, foot - 9.0 * k);
+      // the round back bulge, rising
+      ctx.quadraticCurveTo(cx - 6.2 * k, foot - 9.6 * k, cx - 5.6 * k, foot - 11.8 * k);
+      // rounded crown near ear height
+      ctx.quadraticCurveTo(cx - 4.8 * k, foot - 13.2 * k, cx - 3.2 * k, foot - 12.5 * k);
+      // inner edge sliding under the ear, down to the tip
+      ctx.quadraticCurveTo(cx - 1.0 * k, foot - 12.3 * k, cx + 0.2 * k, foot - 11.5 * k);
+      ctx.quadraticCurveTo(cx + 1.6 * k, foot - 10.7 * k, cx + 2.2 * k, foot - 10.0 * k);
+      ctx.closePath();
       ctx.fill();
       ctx.stroke();
-    }
+      // the eye — one full dark oval under the fringe's front tooth,
+      // wearing a small paper glint up-front. Lives inside the head's
+      // transform so it scales along. No brow, no mouth; the fringe
+      // hangs the scowl for him.
+      ctx.fillStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.ellipse(cx + 2.6 * k, foot - 13.1 * k, 0.62 * k, 0.75 * k, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = PAPER;
+      ctx.beginPath();
+      ctx.arc(cx + 2.6 * k, foot - 13.1 * k, 0.22 * k, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    } else {
+    // --- the frontal head, matching the profile's language: the chibi
+    // trace scaled 0.72 around the chin and raised onto the taller
+    // torso. Smooth hair helmet — no tufts, no headband; the features
+    // below are drawn inside this same transform so they ride along.
+    // (Restored after the feature block, before armsInFront draws.)
+    const chinF = foot - 10.3 * k; // the frontal head's bottom edge
+    ctx.save();
+    ctx.translate(cx, chinF - 3.2 * k);
+    ctx.scale(0.72, 0.72);
+    ctx.translate(-cx, -chinF);
     // ears — little side nubs, peeking past the silhouette
     ctx.fillStyle = FACE;
     for (const ex of [-5.5, 5.5]) {
@@ -516,31 +763,19 @@ export function Hoop() {
       ctx.fill();
       ctx.stroke();
     }
-    // the head — one chunky rounded square, most of him, filled with
-    // hair: the dark mop wraps the sides, the face patch below is the
-    // only skin showing
+    // the head — one chunky rounded square filled with hair: the smooth
+    // helmet wraps the sides, the face patch below is the only skin
     ctx.fillStyle = HAIR;
     ctx.beginPath();
     ctx.roundRect(cx - headW / 2, headTop, headW, headH, 3.6 * k);
     ctx.fill();
     ctx.stroke();
-    // tufts — small rounded lobes running along the head's contour,
-    // swept sideways (left lobes lean left, right lean right) with one
-    // little one straight up at the crown. Each is one quadratic from
-    // base to base whose control is pushed out so the curve peaks at
-    // the tip. Bases sit inside the head; only the curve is stroked,
-    // so no seam where tuft meets head.
-    // [baseX1, baseY1, tipX, tipY, baseX2, baseY2] in k units off the feet
+    // two tufts sticking up off the crown, bunched together right of
+    // center. Bases sit inside the head so no seam shows.
     const tufts: readonly (readonly [number, number, number, number, number, number])[] = [
-      [-4.9, -15.4, -6.0, -16.0, -4.6, -16.8],
-      [-4.4, -16.8, -5.2, -18.0, -3.6, -18.2],
-      [-2.8, -18.3, -2.2, -19.7, -1.0, -18.7],
-      [-0.4, -18.8, 0.1, -19.9, 0.6, -18.8],
-      [1.4, -18.6, 2.9, -19.6, 2.4, -18.2],
-      [3.5, -17.9, 5.0, -18.1, 4.2, -16.9],
-      [4.6, -16.6, 5.9, -15.9, 4.9, -15.2],
+      [0.4, -18.8, 0.9, -19.9, 1.4, -18.8],
+      [1.7, -18.5, 3.0, -19.4, 2.7, -18.1],
     ];
-    ctx.fillStyle = HAIR;
     for (const [bx1, by1, tx, ty, bx2, by2] of tufts) {
       // control point so the quadratic's midpoint lands on the tip
       const qx = 2 * tx - (bx1 + bx2) / 2;
@@ -583,6 +818,7 @@ export function Hoop() {
     for (const [zx, zy] of zig) ctx.lineTo(cx + zx * k, foot + zy * k);
     ctx.stroke();
     ctx.lineWidth = lw;
+    }
 
     // the face — stoic half-lids by default, dot eyes under determined
     // brows when he's locked in. Features stay small; the head does the
@@ -632,26 +868,30 @@ export function Hoop() {
       ctx.beginPath();
       ctx.arc(cx, foot - 12.1 * k, 0.8 * k, Math.PI * 0.2, Math.PI * 0.8);
       ctx.stroke();
-    } else if ((pose === "aim" && dragRef.current) || pose === "watch") {
-      // locked in — dot eyes track the ball, brows angled down
-      const look = pose === "watch" ? 0.5 * k : 0;
-      for (const ex of [-1.9, 1.9]) {
+    } else if (pose === "aim" || pose === "watch") {
+      // locked in the whole time the ball's in his hands — dot eyes,
+      // brows angled down. Half-lids over the ball read as sleepwalking.
+      // The profile eye is drawn inside the head block above (it lives
+      // in the head's scale transform), so only the frontal draws here.
+      if (!side) {
+        // frontal — the beat before the turn: dot eyes dead on the
+        // camera, the free-throw stare
+        for (const ex of [-1.9, 1.9]) {
+          ctx.beginPath();
+          ctx.arc(cx + ex * k, eyeY, 0.5 * k, 0, Math.PI * 2);
+          ctx.fill();
+        }
         ctx.beginPath();
-        ctx.arc(cx + ex * k + look, eyeY, 0.5 * k, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.moveTo(cx - 2.5 * k, eyeY - 1.6 * k);
+        ctx.lineTo(cx - 1.1 * k, eyeY - 1.1 * k);
+        ctx.moveTo(cx + 2.5 * k, eyeY - 1.6 * k);
+        ctx.lineTo(cx + 1.1 * k, eyeY - 1.1 * k);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
+        ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
+        ctx.stroke();
       }
-      ctx.beginPath();
-      ctx.moveTo(cx - 2.5 * k, eyeY - 1.6 * k);
-      ctx.lineTo(cx - 1.1 * k, eyeY - 1.1 * k);
-      ctx.moveTo(cx + 2.5 * k, eyeY - 1.6 * k);
-      ctx.lineTo(cx + 1.1 * k, eyeY - 1.1 * k);
-      ctx.stroke();
-      // flat mouth in flight too — a shooter who's good doesn't gasp at
-      // his own shot; the panic face stays reserved for rim chaos
-      ctx.beginPath();
-      ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
-      ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
-      ctx.stroke();
     } else {
       // stoic half-lids and a flat mouth — he's done this before
       ctx.beginPath();
@@ -665,6 +905,11 @@ export function Hoop() {
       ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
       ctx.stroke();
     }
+    // close the frontal head transform (opened in the else branch
+    // above) — the features drew inside it so they scale with the head
+    if (!side) ctx.restore();
+    // shooting form: arms last, in front of the face
+    if (armsInFront) drawArms();
     // marks above the head
     const markX = cx + 4.5 * k;
     const markY = headY - headR - 1.6 * k;
@@ -928,6 +1173,11 @@ export function Hoop() {
               vy: 1 + Math.random() * 3.5,
               at: now,
               color: [MUSTARD, PAPER, YELLOW][i % 3],
+              size: 3,
+              rot: 0,
+              vr: 0,
+              life: 1.4,
+              drag: 0,
             });
           }
         }
@@ -1343,18 +1593,79 @@ export function Hoop() {
       }
       sparksRef.current = aliveSparks;
 
-      // confetti — pixel rain from the rim on every make
+      // beating the game turns the sky into a parade — a steady rain of
+      // tumbling paper across the whole screen for as long as the verdict
+      // is up, plus corner cannons for the first half second. Capped;
+      // pieces leaving the screen free their slots, so the rain never
+      // stalls and never mounds.
+      if (phaseRef.current === "beat" && confettiRef.current.length < 240) {
+        const PARADE = [MUSTARD, PAPER, YELLOW, THEME.rim, THEME.headband];
+        const pick = () => PARADE[Math.floor(Math.random() * PARADE.length)];
+        for (let i = 0; i < 2; i++) {
+          confettiRef.current.push({
+            // spawned just above the visible sky, anywhere across it
+            x: (Math.random() * W - ox) / scale,
+            y: (floorY + 10) / scale + Math.random() * 0.6,
+            vx: (Math.random() - 0.5) * 1.4,
+            vy: -(0.4 + Math.random() * 1.2),
+            at: now,
+            color: pick(),
+            size: 4 + Math.random() * 3.5,
+            rot: Math.random() * Math.PI * 2,
+            vr: (Math.random() - 0.5) * 8,
+            life: 6,
+            drag: 2.5,
+          });
+        }
+        if (now - phaseAtRef.current < 0.5) {
+          for (const [cnx, dir] of [
+            [0.2, 1],
+            [level.w - 0.2, -1],
+          ] as const) {
+            for (let i = 0; i < 2; i++) {
+              confettiRef.current.push({
+                x: cnx,
+                y: 0.1,
+                vx: dir * (1 + Math.random() * 2.5),
+                vy: 7 + Math.random() * 6,
+                at: now,
+                color: pick(),
+                size: 4 + Math.random() * 3,
+                rot: Math.random() * Math.PI * 2,
+                vr: (Math.random() - 0.5) * 10,
+                life: 6,
+                drag: 1.8,
+              });
+            }
+          }
+        }
+      }
+
+      // confetti — pixel rain from the rim on every make, tumbling paper
+      // across the sky when the game is beaten
       const aliveConf: Confetti[] = [];
+      const confCullY = (floorY - H) / scale - 0.4; // below the screen — gone
       for (const c of confettiRef.current) {
         const a = now - c.at;
-        if (a > 1.4) continue;
-        c.vy -= 9.8 * dt * 0.6; // floaty
+        if (a > c.life || c.y < confCullY) continue;
+        c.vy -= (9.8 * 0.6 + c.vy * c.drag) * dt; // floaty; drag → flutter
         c.x += c.vx * dt;
         c.y += c.vy * dt;
+        c.rot += c.vr * dt;
         aliveConf.push(c);
         ctx.fillStyle = c.color;
-        ctx.globalAlpha = a < 0.9 ? 1 : 1 - (a - 0.9) / 0.5;
-        ctx.fillRect(sx(c.x) - 1.5, sy(c.y) - 1.5, 3, 3);
+        ctx.globalAlpha = a < c.life - 0.5 ? 1 : (c.life - a) / 0.5;
+        if (c.size <= 3) {
+          ctx.fillRect(sx(c.x) - 1.5, sy(c.y) - 1.5, 3, 3);
+        } else {
+          // a paper piece thins as it turns edge-on — reads as a tumble
+          ctx.save();
+          ctx.translate(sx(c.x), sy(c.y));
+          ctx.rotate(c.rot);
+          const th = c.size * (0.25 + 0.55 * Math.abs(Math.sin(c.rot * 1.3)));
+          ctx.fillRect(-c.size / 2, -th / 2, c.size, th);
+          ctx.restore();
+        }
       }
       ctx.globalAlpha = 1;
       confettiRef.current = aliveConf;
@@ -1414,7 +1725,27 @@ export function Hoop() {
                   : "watch";
       // small on purpose — he's a little guy on a big court (~0.65m tall)
       const k = Math.max(2, Math.round((scale * 0.65) / 14));
-      drawCreature(ctx, sx(level.launch.x), floorY, k, pose, now);
+      // profile the whole time the ball's his problem — set point
+      // through flight. He only turns to the camera for reactions;
+      // reaction shots play to the audience.
+      const sideOn = pose === "aim" || pose === "watch";
+      // he stands a step behind the launch point, so the held ball sits
+      // up and in front of his forehead — the set point, not a head
+      // rest. The aim ball draws after him, so where it overlaps his
+      // crown it reads as in front, which is exactly right.
+      drawCreature(ctx, sx(level.launch.x) - 4.4 * k, floorY, k, pose, now, sideOn);
+      // the shooting palm — drawn after the held ball so it reads as
+      // the hand cupping its underside; the wrist mitten below-left
+      // closes the arm
+      const palmUnderBall = (bx: number, by: number) => {
+        ctx.fillStyle = THEME.face;
+        ctx.strokeStyle = THEME.outline;
+        ctx.lineWidth = Math.max(1.2, k * 0.45);
+        ctx.beginPath();
+        ctx.ellipse(bx - 0.4 * k, by + ballR * 0.92, 1.2 * k, 0.62 * k, 0.35, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      };
 
       if (ph === "flying" && shot && !shot.state.done) {
         const bx2 = sx(shot.state.x);
@@ -1434,6 +1765,7 @@ export function Hoop() {
       } else if (ph === "enter") {
         // ball in hand, waiting
         drawBall(ctx, sx(level.launch.x), sy(level.launch.y), ballR, ballRotRef.current);
+        palmUnderBall(sx(level.launch.x), sy(level.launch.y));
       } else if (ph === "dead" && shot) {
         // the dead ball lies where it stopped
         ballShadow(shot.state.x, Math.max(shot.state.y, BALL_R));
@@ -1456,6 +1788,7 @@ export function Hoop() {
           }
         }
         drawBall(ctx, bx, by, ballR, ballRotRef.current);
+        palmUnderBall(bx, by);
         if (aim) {
           const p01 = (aim.p - MIN_POWER) / (MAX_POWER - MIN_POWER);
           const rad = (aim.a * Math.PI) / 180;
@@ -1817,9 +2150,9 @@ export function Hoop() {
       // mid-shot: the ball high on its arc up-right, ghost beats trailing
       // back to his shooting hand like the training-wheel dots
       const feetX = W / 2 - 120;
-      drawCreature(ctx, feetX, grassY, k, "watch", snapNow);
-      const handX = feetX + 7.4 * k;
-      const handY = grassY - 16.5 * k;
+      drawCreature(ctx, feetX, grassY, k, "watch", snapNow, true); // eyes on the shot, not us
+      const handX = feetX + 6.6 * k;
+      const handY = grassY - 16.2 * k;
       const ballX = W / 2 + 250;
       const ballY = 620;
       ctx.fillStyle = OUTLINE;
@@ -1953,7 +2286,11 @@ export function Hoop() {
             stops the tap from advancing. */}
         {(phase === "dead" || phase === "beat") && (
           <div
-            className="absolute inset-0 z-10 flex touch-none items-center justify-center bg-[#312d28]/40 animate-[fade-in_0.2s_ease-out_0.1s_both]"
+            className={`absolute inset-0 z-10 flex touch-none items-center justify-center animate-[fade-in_0.2s_ease-out_0.1s_both] ${
+              // death dims the world in ink; victory keeps it bright under
+              // a gold wash so the confetti rain stays lit
+              phase === "beat" ? "bg-[#f2b32e]/10" : "bg-[#312d28]/40"
+            }`}
             onPointerDown={advance}
           >
             <div className="flex w-72 max-w-[85%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-8 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both]">
@@ -1985,12 +2322,42 @@ export function Hoop() {
                 </>
               ) : (
                 <>
-                  <h2 className="font-display text-3xl font-bold text-warning">
-                    You Beat It
+                  {/* the banner — champion lettering. each letter stamps
+                      in on its own beat with a hand-set tilt, then the
+                      whole line hangs from its nail and sways. */}
+                  <h2
+                    aria-label="You Beat It"
+                    className="origin-top animate-[banner-sway_3.4s_ease-in-out_1.4s_infinite] font-display text-3xl font-bold text-warning [text-shadow:0.07em_0.07em_0_var(--foreground)]"
+                  >
+                    {"You Beat It".split("").map((ch, i) => (
+                      <span
+                        key={i}
+                        aria-hidden
+                        className="inline-block whitespace-pre animate-[letter-pop_0.5s_cubic-bezier(0.34,1.56,0.64,1)_both]"
+                        style={{
+                          animationDelay: `${0.3 + i * 0.05}s`,
+                          // hand-set type: nothing sits perfectly straight
+                          rotate: `${((i * 7) % 5) - 2}deg`,
+                        }}
+                      >
+                        {ch}
+                      </span>
+                    ))}
                   </h2>
-                  <p className="text-xs text-muted">
-                    all {LEVELS.length} levels, one ball, no misses
-                  </p>
+                  {/* his note — taped on askew after the banner settles */}
+                  <div className="relative w-full rotate-[-2deg] rounded-sm border border-border bg-surface px-4 pb-2 pt-3 shadow-[2px_2px_0_rgba(49,45,40,0.12)] animate-[note-in_0.4s_cubic-bezier(0.34,1.56,0.64,1)_1s_both]">
+                    <div
+                      aria-hidden
+                      className="absolute -top-2 left-1/2 h-4 w-10 -translate-x-1/2 rotate-[4deg] rounded-[1px] bg-[#eae2cb]/80"
+                    />
+                    <p className="font-hand text-xl leading-tight text-foreground">
+                      all {LEVELS.length} levels, one ball, no misses.
+                      <br />i watched every shot.
+                    </p>
+                    <p className="mt-1 text-right font-hand text-lg text-muted">
+                      — the little guy
+                    </p>
+                  </div>
                 </>
               )}
               <p className="text-xs text-muted">
@@ -1999,12 +2366,21 @@ export function Hoop() {
                   {buckets} CAREER {buckets === 1 ? "BUCKET" : "BUCKETS"}
                 </span>
               </p>
+              {/* the primary action wears the ball's mustard and a real
+                  cast shadow — hover lifts it off the paper, pressing
+                  drops it flat into its own shadow. min-w so the copied
+                  swap doesn't jiggle the width. */}
               <button
                 onClick={shareRun}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="rounded-lg border-2 border-foreground bg-well px-4 py-2 text-xs font-bold text-foreground hover:bg-hover-bg"
+                className="flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
               >
-                {copied ? "copied" : "share result"}
+                {copied ? (
+                  <Check size={13} strokeWidth={3} aria-hidden />
+                ) : (
+                  <Share2 size={13} strokeWidth={2.5} aria-hidden />
+                )}
+                {copied ? "copied" : "share"}
               </button>
               <p className="animate-pulse text-[11px] text-muted">
                 tap anywhere to play again

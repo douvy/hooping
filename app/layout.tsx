@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Serif, Inter, JetBrains_Mono } from "next/font/google";
+import { Caveat, IBM_Plex_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -17,6 +17,13 @@ const jetbrainsMono = JetBrains_Mono({
 const plexSerif = IBM_Plex_Serif({
   weight: ["600", "700"],
   variable: "--font-plex-serif",
+  subsets: ["latin"],
+});
+
+// the handwriting — one job: the little guy's note when you beat the game
+const caveat = Caveat({
+  weight: "600",
+  variable: "--font-caveat",
   subsets: ["latin"],
 });
 
@@ -58,7 +65,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${jetbrainsMono.variable} ${plexSerif.variable} font-sans`}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} ${plexSerif.variable} ${caveat.variable} font-sans`}>
         {/* dvh, not vh — iOS Safari's 100vh overshoots the visible area
             and leaves phantom scroll under the game */}
         <main className="min-h-dvh">{children}</main>

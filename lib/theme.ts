@@ -24,11 +24,18 @@ export const THEME = {
   concrete: "#93a5b8",
   /** the floodlight, and the city's lit windows */
   lamp: "#ffc95e",
-  /** the creature */
-  fur: "#49505d",
-  hair: "#2b303c",
-  face: "#d3d7dd",
+  /** the creature — palette traced off the running-boy reference:
+   * blue mop, warm tan skin, white fleece, dark denim legs */
+  fur: "#31648e",
+  hair: "#293243",
+  face: "#ecb686",
   headband: "#3f8fdd",
+  /** his hoodie — grey heather fleece */
+  hoodie: "#c3c7cb",
+  /** the hoodie's kangaroo pocket — the same fleece, one stop darker */
+  pocket: "#a9adb3",
+  /** the cream sole band on his boots */
+  cream: "#f0e3c6",
 } as const;
 
 /** one sky per level — afternoon cooling through sunset into night.
