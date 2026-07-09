@@ -119,8 +119,11 @@ export function bounce(speed: number) {
 }
 
 /** The swish — a filtered noise burst falling through the net. The only
- * non-oscillator sound in the game; nothing synthetic says "nylon". */
-export function swish() {
+ * non-oscillator sound in the game; nothing synthetic says "nylon".
+ * A soft pentatonic ping rides on top, climbing with level depth — the
+ * tick-ladder trick: deeper buckets ring higher. */
+export function swish(depth = 1) {
+  blip(SCALE[Math.min(2 + depth, SCALE.length - 1)], 0.06, 0.12, 0.03, undefined, "sine");
   const c = ensure();
   const t = c.currentTime;
   const len = 0.22;

@@ -23,6 +23,7 @@ import {
   type Shooter,
   type Touch,
 } from "@/lib/hoop";
+import { isBucketMilestone, parseRun, type RunState } from "@/lib/run";
 import { createSpring } from "@/lib/spring";
 import * as sound from "@/lib/sound";
 import { SKIES, THEME, darken, withAlpha } from "@/lib/theme";
@@ -162,25 +163,15 @@ interface LastShot {
 
 // --- the run, persisted ---
 
-interface RunState {
-  run: number;
-  bestDepth: number; // deepest level ever cleared
-}
-
 const RUN_KEY = "hoop-run-v1";
 const MUTE_KEY = "hoop-muted-v1";
 
 function loadRun(): RunState {
   try {
-    const raw = localStorage.getItem(RUN_KEY);
-    if (raw) {
-      const s = JSON.parse(raw) as RunState;
-      if (s.run >= 1) return s;
-    }
+    return parseRun(localStorage.getItem(RUN_KEY));
   } catch {
-    // fresh player
+    return parseRun(null); // storage blocked — fresh player
   }
-  return { run: 1, bestDepth: 0 };
 }
 
 function saveRun(s: RunState) {
@@ -215,6 +206,7 @@ export function Hoop() {
   const lastRimAtRef = useRef(-Infinity); // panic window
   const madeRef = useRef(false);
   const bestDepthRef = useRef(0); // gates the new-deepest fanfare
+  const bucketsRef = useRef(0); // career makes — the meter that only climbs
   const eventAtRef = useRef(-Infinity); // joy hop clock
   const leanAtRef = useRef(-Infinity); // rim-approach slow-mo clock
   const inMouthRef = useRef(false); // edge-detects entry into rim airspace
@@ -247,6 +239,7 @@ export function Hoop() {
     const t = setTimeout(() => {
       const s = loadRun();
       bestDepthRef.current = s.bestDepth;
+      bucketsRef.current = s.buckets;
       runRef.current = s.run;
       setRunState(s);
       const m = localStorage.getItem(MUTE_KEY) === "1";
@@ -314,7 +307,12 @@ export function Hoop() {
       const depth = levelIdxRef.current + 1;
       setRunState((prev) => {
         if (!prev) return prev;
-        const next = { ...prev, bestDepth: Math.max(prev.bestDepth, depth) };
+        // bucketsRef was bumped at the made-moment in the rAF loop
+        const next = {
+          ...prev,
+          bestDepth: Math.max(prev.bestDepth, depth),
+          buckets: bucketsRef.current,
+        };
         saveRun(next);
         return next;
       });
@@ -839,15 +837,20 @@ export function Hoop() {
           madeRef.current = true;
           eventAtRef.current = now;
           kickAtRef.current = now;
-          sound.swish();
-          navigator.vibrate?.([20, 30, 40]);
           const depth = levelIdxRef.current + 1;
+          sound.swish(depth); // deeper buckets ring higher
+          navigator.vibrate?.([20, 30, 40]);
           const firstEver = bestDepthRef.current === 0; // the conversion moment
           if (depth > bestDepthRef.current) {
             bestDepthRef.current = depth;
             newBestRef.current = true;
             sound.fanfare(); // deeper than ever before
           }
+          // the career meter — every make anywhere deposits one, so even a
+          // run that dies on level 2 paid into something permanent
+          bucketsRef.current += 1;
+          const milestone = isBucketMilestone(bucketsRef.current);
+          if (milestone && !newBestRef.current) sound.fanfare();
           // name the shot
           const walled = s.touches.some((t) => t.kind === "wall");
           const banked = s.touches.some((t) => t.kind === "board");
@@ -856,21 +859,27 @@ export function Hoop() {
             text:
               depth === LEVELS.length
                 ? "GAME WINNER"
-                : firstEver
-                  ? "FIRST BUCKET"
-                  : walled
-                    ? "OFF THE WALL"
-                    : rims >= 2
-                      ? "RATTLED IN"
-                      : banked
-                        ? "BANK!"
-                        : "SWISH",
+                : milestone
+                  ? `${bucketsRef.current} BUCKETS`
+                  : firstEver
+                    ? "FIRST BUCKET"
+                    : walled
+                      ? "OFF THE WALL"
+                      : rims >= 2
+                        ? "RATTLED IN"
+                        : banked
+                          ? "BANK!"
+                          : "SWISH",
             at: now,
-            color: depth === LEVELS.length || newBestRef.current ? YELLOW : PAPER,
+            color:
+              depth === LEVELS.length || newBestRef.current || milestone
+                ? YELLOW
+                : PAPER,
           };
-          // confetti from the rim — the first bucket ever gets a parade
+          // confetti from the rim — scaled with depth, so a deep make
+          // literally rains more; the first bucket ever gets a parade
           const ccx = level.rim.x + RIM_GAP / 2;
-          const n = depth === LEVELS.length ? 80 : firstEver ? 60 : 36;
+          const n = depth === LEVELS.length ? 80 : firstEver ? 60 : 24 + depth * 6;
           for (let i = 0; i < n; i++) {
             confettiRef.current.push({
               x: ccx,
@@ -1590,19 +1599,29 @@ export function Hoop() {
           newBestRef.current ? YELLOW : PAPER,
         );
       } else if (ph === "enter") {
-        // level 6 is match point — it should feel like it. Deep runs get
-        // their streak named on the way in.
+        // level 6 is the last shot; the level past your best is match
+        // point — the run that could set a new best should feel different
+        // BEFORE the shot, not just after. Deep runs get their streak
+        // named on the way in.
         const lastOne = level.id === LEVELS.length;
+        const matchPoint =
+          !lastOne && bestDepthRef.current > 0 && level.id === bestDepthRef.current + 1;
         card(
-          lastOne ? "THE LAST SHOT" : `LEVEL ${level.id}`,
+          lastOne
+            ? "THE LAST SHOT"
+            : matchPoint
+              ? `LEVEL ${level.id} — MATCH POINT`
+              : `LEVEL ${level.id}`,
           lastOne
             ? `level ${level.id} — game ${run}`
-            : heat >= 4
-              ? `game ${run} — on fire`
-              : heat >= 2
-                ? `game ${run} — heating up`
-                : `game ${run}`,
-          lastOne ? YELLOW : PAPER,
+            : matchPoint
+              ? `game ${run} — a make sets a new best`
+              : heat >= 4
+                ? `game ${run} — on fire`
+                : heat >= 2
+                  ? `game ${run} — heating up`
+                  : `game ${run}`,
+          lastOne || matchPoint ? YELLOW : PAPER,
         );
       }
     };
@@ -1703,6 +1722,7 @@ export function Hoop() {
 
   const run = runState?.run ?? 1;
   const bestDepth = runState?.bestDepth ?? 0;
+  const buckets = runState?.buckets ?? 0;
   // what the miss cost you — no tease when you die on the last rung
   const nextLevel = levelIdx + 1 < LEVELS.length ? LEVELS[levelIdx + 1] : null;
 
@@ -1712,8 +1732,8 @@ export function Hoop() {
     const trail = "🏀".repeat(made) + (phase === "beat" ? "" : "✗");
     const text =
       phase === "beat"
-        ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\nhooping.io`
-        : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\nhooping.io`;
+        ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\n${buckets} career buckets\nhooping.io`
+        : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\n${buckets} career buckets\nhooping.io`;
     // phones get the native share sheet; desktop copies. share() rejects
     // when the user dismisses the sheet — that's a no-op, not a fallback.
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
@@ -1809,6 +1829,13 @@ export function Hoop() {
                     died on level {levelIdx + 1}
                     {last ? ` — ${autopsy(last)}` : ""}
                   </p>
+                  {/* the near-miss, named — dying at the frontier is the
+                      strongest retry trigger in the game */}
+                  {bestDepth > 0 && levelIdx === bestDepth && (
+                    <p className="text-xs font-bold text-warning">
+                      one make from a new best
+                    </p>
+                  )}
                   {nextLevel && (
                     <div className="flex w-full flex-col items-center gap-2 rounded-lg border border-border bg-well px-3 pb-2 pt-3">
                       <p className="label">next up — level {nextLevel.id}</p>
@@ -1830,7 +1857,10 @@ export function Hoop() {
                 </>
               )}
               <p className="text-xs text-muted">
-                GAME {run} · BEST {bestDepth}/{LEVELS.length} CLEARED
+                GAME {run} · BEST {bestDepth}/{LEVELS.length}
+                <span className="block">
+                  {buckets} CAREER {buckets === 1 ? "BUCKET" : "BUCKETS"}
+                </span>
               </p>
               <button
                 onClick={shareRun}
@@ -1866,11 +1896,17 @@ export function Hoop() {
           // this line states the stakes instead of repeating it
           <span>one shot per level. a miss ends the game.</span>
         )}
-        <span className="flex shrink-0 items-center gap-3 max-sm:hidden">
-          <span>
+        <span className="flex shrink-0 items-center gap-3">
+          {/* the career meter — only ever climbs, every run deposits */}
+          {buckets > 0 && (
+            <span>
+              {buckets} {buckets === 1 ? "bucket" : "buckets"}
+            </span>
+          )}
+          <span className="max-sm:hidden">
             <Kbd>drag</Kbd> shoot
           </span>
-          <span>
+          <span className="max-sm:hidden">
             <Kbd>space</Kbd> replay
           </span>
         </span>
