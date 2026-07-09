@@ -121,6 +121,16 @@ interface Aim {
   a: number;
 }
 
+// a drag only ARMS when it's a real pull: past min power (96px of pull,
+// where the bar first reads above 0) and not ending substantially
+// forward of its origin — a cancel flick back past the start point must
+// stay a cancel, especially at touch speeds. The 0.35 tolerance keeps
+// straight-down lob pulls with a little thumb drift legal.
+function isArmed(d: { sx: number; sy: number; dx: number; dy: number }): boolean {
+  const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
+  return pull > MIN_POWER * 24 && d.sx - d.dx > -0.35 * pull;
+}
+
 // pull back, throw opposite. /24 not /16: a longer pull for the same power
 // means finger error is a smaller fraction of the aim — more skill, less
 // hand-dice (gauntlet sim: practiced make rate 60% → 68% per level).
@@ -391,7 +401,7 @@ export function Hoop() {
     // out of one can't pop him back up like a hop.
     else if (pose === "aim") {
       const d = dragRef.current;
-      dy = d && Math.hypot(d.dx - d.sx, d.dy - d.sy) > MIN_POWER * 24 ? 1 : 0;
+      dy = d && isArmed(d) ? 1 : 0;
     }
     else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
 
@@ -2065,11 +2075,10 @@ export function Hoop() {
         }
         const drag = dragRef.current;
         const aim = drag ? aimFromDrag(drag) : null;
-        // the pull only ARMS past min power (96px). Under that the bar
-        // reads 0 and release is a free bail-out — so the aim draws as a
-        // ghost stub until it's a real shot, and snaps solid when armed.
+        // unarmed pulls (see isArmed) are free bail-outs — the aim draws
+        // as a ghost stub until it's a real shot, and snaps solid armed
         const pullPx = drag ? Math.hypot(drag.dx - drag.sx, drag.dy - drag.sy) : 0;
-        const armed = pullPx > MIN_POWER * 24;
+        const armed = drag ? isArmed(drag) : false;
         if (!aim) powerNotchRef.current = -1; // fresh pull, fresh detents
         if (aim) {
           // drawn-bowstring tremble past 60% power
@@ -2087,7 +2096,9 @@ export function Hoop() {
           const rad = (aim.a * Math.PI) / 180;
           // unarmed pulls draw a short ghost stub that grows toward the
           // arming point — the shot isn't real yet and the picture says so
-          const len = armed ? 14 + p01 * 52 : 4 + (pullPx / (MIN_POWER * 24)) * 10;
+          const len = armed
+            ? 14 + p01 * 52
+            : 4 + Math.min(1, pullPx / (MIN_POWER * 24)) * 10;
           // the arrow heats up with power — ink by default, red when hot
           const aimC = p01 > 0.6 ? THEME.rim : OUTLINE;
           const tipX = bx + Math.cos(rad) * len;
@@ -2362,12 +2373,15 @@ export function Hoop() {
     if (!d || e.pointerId !== d.id) return;
     dragRef.current = null;
     if (phaseRef.current !== "aim") return;
-    const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
-    // a pull that never armed the bar is not a shot — min power lives at
-    // 96px, under that the readout is a ghost and release is a free
-    // bail-out. Covers stray taps AND regretted angles: ease back toward
-    // the ball until the arrow ghosts, let go, keep your run.
-    if (pull <= MIN_POWER * 24) return;
+    // the up event carries the TRUE final finger position — touch moves
+    // are throttled and coalesced, so a quick pull-back-and-lift can
+    // leave dx/dy frames stale and fire a shot the player bailed on
+    d.dx = e.clientX;
+    d.dy = e.clientY;
+    // an unarmed pull is not a shot — release is a free bail-out.
+    // Covers stray taps, regretted angles eased back to the ball, and
+    // cancel flicks that overshoot the origin.
+    if (!isArmed(d)) return;
     shoot(aimFromDrag(d));
   };
 
