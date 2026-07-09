@@ -157,10 +157,12 @@ export function swish(depth = 1) {
   nylon(0.05, 0.3, 2400, 500, 0.2, 1.0); // the pull-through
   // the hem's kick — a low pat under the nylon
   blip(180, 0.1, 0.1, 0.035, 120, "sine");
-  // the reward — two notes rising
+  // the reward — two notes, the second leaping a minor 7th to the
+  // root's flat 7. The old polite 4th was meh; the b7 leap struts,
+  // and it hands off to the level-up's dominant-7 arpeggio.
   const base = Math.min(2 + depth, SCALE.length - 3);
   blip(SCALE[base], 0.08, 0.09, 0.035, undefined, "sine");
-  blip(SCALE[base + 2], 0.17, 0.18, 0.04, undefined, "sine");
+  blip(SCALE[base] * 1.7818, 0.17, 0.18, 0.045, undefined, "sine");
 }
 
 /** A pennant snapping onto the rafter rope — a short cloth whip and a
@@ -189,6 +191,27 @@ export function pennant() {
   src.stop(t + len);
   // the ring — the flag settles home
   blip(1318, 0.04, 0.14, 0.028, undefined, "sine");
+}
+
+// G Mixolydian — the major ladder with its 7th flattened. The b7 is what
+// makes a climb strut instead of resolve.
+const MIXO = [
+  392, 440, 493.9, 523.3, 587.3, 659.3, 698.5, 784, 880, 987.8, 1046.5,
+];
+
+/** Advancing to the next level — an unhurried major-triad walk-up:
+ * 1, 3, then the 5th held clean while it exhales. Root walks up the
+ * Mixolydian ladder two steps per level cleared, so the phrase itself
+ * rises as you do. Bigger than the swish, smaller than the fanfare. */
+export function levelUp(depth = 1) {
+  const f0 = MIXO[Math.min((depth - 1) * 2, MIXO.length - 1)];
+  // the walk-up — root, then the major 3rd
+  blip(f0, 0, 0.07, 0.026);
+  blip(f0 * 1.2599, 0.09, 0.07, 0.03);
+  // the peak — the 5th, held, let it breathe out
+  blip(f0 * 1.4983, 0.2, 0.32, 0.038);
+  // the halo — a quiet sine an octave over the peak
+  blip(f0 * 2.9966, 0.2, 0.2, 0.01, undefined, "sine");
 }
 
 /** New personal best today. The only fanfare in the game. */

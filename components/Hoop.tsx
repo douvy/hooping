@@ -116,6 +116,13 @@ function hash01(n: number): number {
 
 const kickSpring = createSpring({ stiffness: 320, damping: 14, mass: 1 });
 
+// pennant ceremony timing — a new flag leaves the net HOIST_DELAY after
+// the swish and flies for RISE seconds to its slot on the rope. The
+// cleared phase holds until the raise lands: nobody misses their own
+// ceremony.
+const HOIST_DELAY = 0.6;
+const RISE = 0.8;
+
 interface Aim {
   p: number;
   a: number;
@@ -251,6 +258,9 @@ export function Hoop() {
   const ropeBaseRef = useRef(0);
   const hoistAtRef = useRef(-Infinity);
   const snapCountRef = useRef(0); // pennants that have snapped in (gates the sound)
+  const hoistFromRef = useRef({ x: 0, y: 0 }); // rim screen pos at swish — new flags launch from the net
+  const waveAtRef = useRef(-Infinity); // regrind make: the level's old flag waves back
+  const waveIdxRef = useRef(-1);
   const powerNotchRef = useRef(0); // last power-bar notch ticked — the detent gate
 
   // HUD state
@@ -317,6 +327,9 @@ export function Hoop() {
     const ph = phaseRef.current;
     if (ph === "cleared") {
       const ni = levelIdxRef.current + 1;
+      // the next round announces itself — an arpeggio rooted by the
+      // level just cleared, timed to the enter card's slam
+      sound.levelUp(ni);
       levelIdxRef.current = ni;
       setLevelIdx(ni);
     } else if (ph === "dead" || ph === "beat") {
@@ -1124,10 +1137,19 @@ export function Hoop() {
       }
       // a make rolls into the next level on its own — keep the momentum.
       // only death asks for a press. Regrind levels (below your best)
-      // get a short beat: the run back to the frontier shouldn't idle.
+      // get a shorter beat, but still a full one — 0.4s whisked past the
+      // swish before it finished paying out.
       const clearedHold =
-        LEVELS[levelIdxRef.current].id < bestDepthRef.current ? 0.4 : 1.0;
-      if (phaseRef.current === "cleared" && now - phaseAtRef.current > clearedHold) {
+        LEVELS[levelIdxRef.current].id < bestDepthRef.current ? 0.7 : 1.0;
+      // a raise in progress holds the curtain — the level transition's
+      // sky wash was papering over the mid-flight flag. Nobody misses
+      // their own ceremony: snap, whip, THEN the next level.
+      const ceremonyEnd = hoistAtRef.current + HOIST_DELAY + RISE + 0.55;
+      if (
+        phaseRef.current === "cleared" &&
+        now - phaseAtRef.current > clearedHold &&
+        now > ceremonyEnd
+      ) {
         advance();
       }
 
@@ -1222,6 +1244,17 @@ export function Hoop() {
             ropeBaseRef.current = bestDepthRef.current + winsRef.current;
             hoistAtRef.current = now;
             snapCountRef.current = 0;
+            // the flag is earned HERE — launch it from the net so the
+            // eye can ride it up to the rafters
+            hoistFromRef.current = {
+              x: sx(level.rim.x + RIM_GAP / 2),
+              y: sy(level.rim.y) + 10,
+            };
+          } else {
+            // already-flagged level: that flag waves back at the swish —
+            // every bucket touches the rafters, not just the new bests
+            waveAtRef.current = now;
+            waveIdxRef.current = depth - 1;
           }
           if (depth > bestDepthRef.current) {
             bestDepthRef.current = depth;
@@ -1252,15 +1285,17 @@ export function Hoop() {
                   ? `${bucketsRef.current} BUCKETS`
                   : firstEver
                     ? "FIRST BUCKET"
-                    : walled
-                      ? "OFF THE WALL"
-                      : rims >= 2
-                        ? "SHOOTERS SHOOT"
-                        : banked
-                          ? "BANK'S OPEN"
-                          : streak >= 2
-                            ? `SWISH ×${streak}`
-                            : "SWISH",
+                    : s.touches.length >= 4
+                      ? "CIRCUS SHOT"
+                      : walled
+                        ? "OFF THE WALL"
+                        : rims >= 2
+                          ? "SHOOTERS SHOOT"
+                          : banked
+                            ? "BANK'S OPEN"
+                            : streak >= 2
+                              ? `SWISH ×${streak}`
+                              : "SWISH",
             at: now,
             color:
               depth === LEVELS.length || newBestRef.current || milestone
@@ -1477,103 +1512,6 @@ export function Hoop() {
           // one silhouette, gaps show the layer behind
           bx += bw * (0.72 + hash01(seed + bi * 3 + 4) * 0.55);
         }
-      }
-
-      // the rafters — the trophy case is the world, not a stat readout.
-      // One pennant per level ever cleared, then a gold championship
-      // banner per full clear, strung on a sagging rope top-right like a
-      // small gym's banner wall. New ones get RAISED: they climb out of
-      // the sky, overshoot the rope, snap on (the rope dips), and sway
-      // themselves still.
-      const nBest = bestDepthRef.current;
-      const nFlags = nBest + winsRef.current;
-      if (nFlags > 0) {
-        // a lifetime of wins keeps hanging banners — the rope crowds
-        // before it grows past roughly half the sky
-        const spacing = Math.min(22, Math.max(9, (W * 0.55 - 26) / nFlags));
-        const ropeR = W - 12;
-        const ropeL = ropeR - nFlags * spacing - 10;
-        const RISE = 0.8; // seconds on the rope, sky to rafter
-        const hoistStart = (i: number) =>
-          hoistAtRef.current + 0.6 + (i - ropeBaseRef.current) * 0.35;
-        // the rope dips when a flag snaps on, then rings itself out
-        let sag = 4;
-        for (let i = ropeBaseRef.current; i < nFlags; i++) {
-          const since = now - hoistStart(i) - RISE;
-          if (since > 0) sag += 2.5 * Math.exp(-3 * since) * Math.cos(7 * since);
-        }
-        ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = 1.5;
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        ctx.moveTo(ropeL, 0);
-        ctx.quadraticCurveTo((ropeL + ropeR) / 2, sag * 2, ropeR, 0);
-        ctx.stroke();
-        // each level flies its own color, left to right — six is the gold;
-        // every full clear hangs a swallowtail after them
-        const flags = [THEME.rim, THEME.headband, MUSTARD, THEME.grass, PAPER, YELLOW];
-        for (let i = 0; i < nFlags; i++) {
-          const px2 = ropeL + spacing * 0.7 + i * spacing;
-          // where the rope hangs at this x — quadratic from ends at y=0
-          const t = (px2 - ropeL) / (ropeR - ropeL);
-          const py2 = 4 * sag * t * (1 - t);
-          const champ = i >= nBest;
-          // hung by hand, not machine
-          const len = champ ? 18 + hash01(i * 7 + 70) * 3 : 13 + hash01(i * 7 + 70) * 5;
-          // the breeze — every flag stirs a little, out of step
-          let rot = 0.04 * Math.sin(now * 0.9 + i * 1.7);
-          let yOff = 0;
-          if (i >= ropeBaseRef.current) {
-            const tr = (now - hoistStart(i)) / RISE;
-            if (tr < 0) continue; // still below, waiting its turn
-            if (tr < 1) {
-              // the climb — easeOutBack overshoots the rope, then settles
-              const u = tr - 1;
-              const c1 = 1.70158;
-              const eased = 1 + (c1 + 1) * u * u * u + c1 * u * u;
-              yOff = (1 - eased) * 34;
-              rot += (1 - tr) * 0.3 * Math.sin(tr * 12); // flutter on the way up
-            } else {
-              // snapped on — one cloth whip per flag, then sway to rest
-              const local = i - ropeBaseRef.current;
-              if (snapCountRef.current <= local) {
-                snapCountRef.current = local + 1;
-                sound.pennant();
-              }
-              const since = tr * RISE - RISE; // seconds since arrival
-              rot += 0.45 * Math.exp(-1.8 * since) * Math.sin(8 * since);
-            }
-          }
-          ctx.save();
-          ctx.translate(px2, py2 + yOff);
-          ctx.rotate(rot);
-          ctx.fillStyle = champ ? YELLOW : flags[i % flags.length];
-          ctx.beginPath();
-          if (champ) {
-            // championship banner — gold swallowtail, notched hem
-            ctx.moveTo(-5.5, 0);
-            ctx.lineTo(5.5, 0);
-            ctx.lineTo(5.5, len);
-            ctx.lineTo(0, len - 5);
-            ctx.lineTo(-5.5, len);
-          } else {
-            ctx.moveTo(-5, 0);
-            ctx.lineTo(5, 0);
-            ctx.lineTo(0, len);
-          }
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
-          if (champ) {
-            // the stitched dot — reads as a star from courtside
-            ctx.fillStyle = PAPER;
-            ctx.beginPath();
-            ctx.arc(0, 5.5, 1.7, 0, Math.PI * 2);
-            ctx.fill();
-          }
-          ctx.restore();
-        }
-        ctx.lineWidth = 1;
       }
 
       // the ground — an asphalt court cap set in bright grass, everything
@@ -2216,6 +2154,130 @@ export function Hoop() {
           ctx.globalAlpha = 1;
           ctx.font = CANVAS_FONT;
         }
+      }
+
+      // the rafters — the trophy case is the world, not a stat readout.
+      // One pennant per level ever cleared, then a gold championship
+      // banner per full clear, strung on a sagging rope top-right like a
+      // small gym's banner wall. A new one is earned AT THE RIM: it
+      // launches out of the net trophy-big, the eye rides it up to its
+      // slot, it sails just past, snaps on (the rope dips, sparks fly in
+      // its color), and sways itself still. Drawn late in the frame so
+      // the flight crosses the world instead of hiding behind the glass.
+      // Makes on already-flagged levels get a wave from their old flag —
+      // every bucket touches the rafters.
+      const nBest = bestDepthRef.current;
+      const nFlags = nBest + winsRef.current;
+      if (nFlags > 0) {
+        // a lifetime of wins keeps hanging banners — the rope crowds
+        // before it grows past roughly half the sky
+        const spacing = Math.min(22, Math.max(9, (W * 0.55 - 26) / nFlags));
+        const ropeR = W - 12;
+        const ropeL = ropeR - nFlags * spacing - 10;
+        const hoistStart = (i: number) =>
+          hoistAtRef.current + HOIST_DELAY + (i - ropeBaseRef.current) * 0.35;
+        // the rope dips when a flag snaps on, then rings itself out
+        let sag = 4;
+        for (let i = ropeBaseRef.current; i < nFlags; i++) {
+          const since = now - hoistStart(i) - RISE;
+          if (since > 0) sag += 2.5 * Math.exp(-3 * since) * Math.cos(7 * since);
+        }
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(ropeL, 0);
+        ctx.quadraticCurveTo((ropeL + ropeR) / 2, sag * 2, ropeR, 0);
+        ctx.stroke();
+        // each level flies its own color, left to right — six is the gold;
+        // every full clear hangs a swallowtail after them
+        const flags = [THEME.rim, THEME.headband, MUSTARD, THEME.grass, PAPER, YELLOW];
+        for (let i = 0; i < nFlags; i++) {
+          const px2 = ropeL + spacing * 0.7 + i * spacing;
+          // where the rope hangs at this x — quadratic from ends at y=0
+          const t = (px2 - ropeL) / (ropeR - ropeL);
+          const py2 = 4 * sag * t * (1 - t);
+          const champ = i >= nBest;
+          const color = champ ? YELLOW : flags[i % flags.length];
+          // hung by hand, not machine
+          const len = champ ? 18 + hash01(i * 7 + 70) * 3 : 13 + hash01(i * 7 + 70) * 5;
+          // the breeze — every flag stirs a little, out of step
+          let rot = 0.04 * Math.sin(now * 0.9 + i * 1.7);
+          let fx = px2;
+          let fy = py2;
+          let sc = 1;
+          if (i >= ropeBaseRef.current) {
+            const tr = (now - hoistStart(i)) / RISE;
+            if (tr < 0) continue; // still in the net, waiting its turn
+            if (tr < 1) {
+              // the flight — net to rafter. Soft back-ease sails it a
+              // touch past the slot before it settles; the sine lob bows
+              // the path upward so it reads thrown, not slid.
+              const u = tr - 1;
+              const c1 = 0.7;
+              const eased = 1 + (c1 + 1) * u * u * u + c1 * u * u;
+              fx = hoistFromRef.current.x + (px2 - hoistFromRef.current.x) * eased;
+              fy = hoistFromRef.current.y + (py2 - hoistFromRef.current.y) * eased;
+              fy -= 22 * Math.sin(Math.min(1, Math.max(0, eased)) * Math.PI);
+              // trophy-big out of the net, true size on the rope
+              sc = 1 + 1.2 * (1 - eased);
+              rot += (1 - tr) * 0.3 * Math.sin(tr * 12); // flutter on the way up
+            } else {
+              // snapped on — one cloth whip per flag, then sway to rest
+              const local = i - ropeBaseRef.current;
+              if (snapCountRef.current <= local) {
+                snapCountRef.current = local + 1;
+                sound.pennant();
+                // the burst, in the flag's own color — sparks live in
+                // world coords, so convert back out of rope space
+                sparksRef.current.push({
+                  x: (px2 - ox) / scale,
+                  y: (floorY - (py2 + len * 0.5)) / scale,
+                  at: now,
+                  color,
+                });
+              }
+              const since = tr * RISE - RISE; // seconds since arrival
+              rot += 0.45 * Math.exp(-1.8 * since) * Math.sin(8 * since);
+            }
+          }
+          // a make on an already-flagged level — that flag waves back
+          const ws = now - waveAtRef.current;
+          if (i === waveIdxRef.current && ws < 1.6) {
+            rot += 0.5 * Math.exp(-2.2 * ws) * Math.sin(9 * ws);
+          }
+          ctx.save();
+          ctx.translate(fx, fy);
+          ctx.rotate(rot);
+          ctx.scale(sc, sc);
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          if (champ) {
+            // championship banner — gold swallowtail, notched hem
+            ctx.moveTo(-5.5, 0);
+            ctx.lineTo(5.5, 0);
+            ctx.lineTo(5.5, len);
+            ctx.lineTo(0, len - 5);
+            ctx.lineTo(-5.5, len);
+          } else {
+            ctx.moveTo(-5, 0);
+            ctx.lineTo(5, 0);
+            ctx.lineTo(0, len);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          if (champ) {
+            // the stitched dot — reads as a star from courtside
+            ctx.fillStyle = PAPER;
+            ctx.beginPath();
+            ctx.arc(0, 5.5, 1.7, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+        ctx.lineWidth = 1;
+        ctx.lineJoin = "miter";
       }
 
       // the shot-name pop — SWISH / BANK'S OPEN / SHOOTERS SHOOT / OFF THE WALL
