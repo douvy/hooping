@@ -614,10 +614,11 @@ export function Hoop() {
         const elY = foot + ey2 * k;
         const handX = cx + hx * k;
         const handY = foot + hy * k;
-        // profile set point: the guide arm's shoulder is eclipsed by
-        // the body — draw only the forearm, emerging from behind the
-        // head (the head draws after arms and covers the elbow end)
-        const hideUpper = side && pose === "aim" && i === 0;
+        // profile set point and follow-through: the guide arm's
+        // shoulder is eclipsed by the body — draw only the forearm,
+        // emerging from behind the head (the head draws after arms and
+        // covers the elbow end), so no socket stub shows on the torso
+        const hideUpper = side && (pose === "aim" || pose === "watch") && i === 0;
         ctx.beginPath();
         if (hideUpper) {
           ctx.moveTo(elX, elY);
