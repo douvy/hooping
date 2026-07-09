@@ -2642,10 +2642,11 @@ export function Hoop() {
     const beat = phase === "beat";
     const made = beat ? LEVELS.length : levelIdx;
     const trail = "🏀".repeat(made) + (beat ? "" : "✗");
-    // the text line rides along as the caption where the platform allows
+    // one dry line rides along as the caption — the card carries the
+    // stats, the text carries the tappable link and the level's name
     const text = beat
-      ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\nbanner ${wins} in the rafters · ${buckets} career buckets\nhooping.io`
-      : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\n${buckets} career buckets\nhooping.io`;
+      ? `${trail} all ${LEVELS.length} levels, one ball. hooping.io`
+      : `${trail} out on level ${levelIdx + 1} (${LEVELS[levelIdx].name}). hooping.io`;
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
       // share() rejects when the user dismisses the sheet — that's a
       // no-op, not a fallback
