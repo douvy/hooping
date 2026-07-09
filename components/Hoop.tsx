@@ -1073,13 +1073,18 @@ export function Hoop() {
       const level = LEVELS[levelIdxRef.current];
       const W = canvas.width / dpr;
       const H = canvas.height / dpr;
-      // fit the court by both axes and center it — tall phones and wide
-      // desktops both give the game everything they have. Zoomed past a
-      // strict fit: crop a sliver of side margin and the empty sky above
-      // 4.7m (ceilings live at 4.4-4.5). The rim is the protagonist —
-      // high arcs already leave the frame, and that's drama, not a bug.
-      const scale = Math.min(W / (level.w * 0.93), (H - 20) / 4.7);
-      const ox = (W - level.w * scale) / 2;
+      // fit the ACTION SPAN (launch → pole + a step) by both axes and
+      // center it — the ~2m of court behind the pole is physics runway,
+      // not picture, and on a width-limited portrait phone it was costing
+      // 25-35% of the zoom and floating the hoop mid-frame. Cropped, the
+      // hoop sits near the right edge and everything draws bigger; misses
+      // still exit stage right, just off-camera. Zoomed past a strict fit:
+      // crop a sliver of side margin and the empty sky above 4.7m
+      // (ceilings live at 4.4-4.5). The rim is the protagonist — high
+      // arcs already leave the frame, and that's drama, not a bug.
+      const spanW = Math.min(level.w, level.rim.x + RIM_GAP + BOARD_OFF + 0.55);
+      const scale = Math.min(W / (spanW * 0.93), (H - 20) / 4.7);
+      const ox = (W - spanW * scale) / 2;
       // wide screens pin the floor near the bottom — leaving room for the
       // 16px asphalt cap plus a band of grass; tall screens center the
       // court so sky and floor split the leftover instead of the hoop
@@ -1877,16 +1882,18 @@ export function Hoop() {
           ctx.lineTo(tipX + Math.cos(rad - 2.5) * 6, tipY - Math.sin(rad - 2.5) * 6);
           ctx.closePath();
           ctx.fill();
-          // power bar — an outlined paper pill, no units, just how hard
+          // power bar — an outlined paper pill, no units, just how hard.
+          // Above the ball: the ball is held overhead, so below-the-ball
+          // put the bar straight across his face at phone zoom levels.
           ctx.fillStyle = PAPER;
           ctx.strokeStyle = OUTLINE;
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.rect(bx - 17, by + 14, 34, 7);
+          ctx.rect(bx - 17, by - ballR - 21, 34, 7);
           ctx.fill();
           ctx.stroke();
           ctx.fillStyle = p01 >= 0.999 ? YELLOW : MUSTARD;
-          ctx.fillRect(bx - 15.5, by + 15.5, 31 * p01, 4);
+          ctx.fillRect(bx - 15.5, by - ballR - 19.5, 31 * p01, 4);
           ctx.lineWidth = 1;
           // training wheels: until the first-ever bucket, level 1 shows
           // the opening beat of the true arc — deterministic physics keeps
@@ -2326,7 +2333,8 @@ export function Hoop() {
           <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length} CLEARED` : "—"}</span>
           <button
             onClick={toggleSound}
-            className="flex items-center hover:text-[#fdfaf2]"
+            // -m/p: a finger-sized hit area around a 13px icon, no layout shift
+            className="-m-2 flex items-center p-2 hover:text-[#fdfaf2]"
             aria-pressed={sndOn}
             aria-label="sound"
           >
@@ -2476,8 +2484,13 @@ export function Hoop() {
           <span>…</span>
         ) : (
           // the drag lesson lives on the canvas, next to the ball —
-          // this line states the stakes instead of repeating it
-          <span>one shot per level. a miss ends the game.</span>
+          // this line states the stakes instead of repeating it. Phones
+          // get the short cut: the full line plus the bucket counter
+          // wraps at 393px.
+          <span>
+            one shot<span className="max-sm:hidden"> per level</span>. a miss
+            ends the game.
+          </span>
         )}
         <span className="flex shrink-0 items-center gap-3">
           {/* the career meter — only ever climbs, every run deposits */}
