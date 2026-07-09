@@ -634,11 +634,12 @@ export function Hoop() {
         ctx.lineWidth = 1.5 * k;
         ctx.stroke();
         // the wristband — a blue tick across the forearm (paper would
-        // sink into the white sleeve). On the profile guide arm it
-        // rides right at the mitten so no sleeve shows between band
-        // and ball.
+        // sink into the white sleeve). In profile the band sits a fixed
+        // step off the mitten's edge so it always touches the palm — a
+        // forearm fraction drifts up the long shooting arm and hides
+        // under the held ball.
         const flen = Math.hypot(handX - elX, handY - elY) || 1;
-        const wfrac = hideUpper ? 0.88 : 0.7;
+        const wfrac = side ? Math.max(0.5, 1 - (1.25 * k) / flen) : 0.7;
         const wx = elX + (handX - elX) * wfrac;
         const wy = elY + (handY - elY) * wfrac;
         ctx.strokeStyle = HEADBAND;
@@ -1792,6 +1793,18 @@ export function Hoop() {
       // the hand cupping its underside; the wrist mitten below-left
       // closes the arm
       const palmUnderBall = (bx: number, by: number) => {
+        // the blue wristband, restated — the arm's own band is buried
+        // under the ball and this palm, so peek it out just below,
+        // crossing the forearm. Drawn first so the palm laps its top.
+        const wby = by + ballR * 0.92 + 1.15 * k;
+        ctx.strokeStyle = THEME.headband;
+        ctx.lineWidth = 0.8 * k;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(bx - 0.95 * k, wby + 0.11 * k);
+        ctx.lineTo(bx + 0.55 * k, wby - 0.11 * k);
+        ctx.stroke();
+        ctx.lineCap = "butt";
         ctx.fillStyle = THEME.face;
         ctx.strokeStyle = THEME.outline;
         ctx.lineWidth = Math.max(1.2, k * 0.45);
