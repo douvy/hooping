@@ -1521,8 +1521,13 @@ export function Hoop() {
             ctx.fillStyle = bc;
           }
           // overlap or gap, hung by eye — unions within a layer read as
-          // one silhouette, gaps show the layer behind
-          bx += bw * (0.72 + hash01(seed + bi * 3 + 4) * 0.55);
+          // one silhouette, gaps show the layer behind. A sliver gap
+          // reads as a seam, not a gap (the back pair sat 2px apart at
+          // phone width) — too-thin gaps widen to a readable one.
+          let nx = bx + bw * (0.72 + hash01(seed + bi * 3 + 4) * 0.55);
+          const gap = nx - (bx + bw);
+          if (gap > 0 && gap < 20) nx = bx + bw + 20;
+          bx = nx;
         }
       }
 
