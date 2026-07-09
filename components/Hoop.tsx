@@ -1333,6 +1333,87 @@ export function Hoop() {
         ctx.globalAlpha = 1;
       }
 
+      // the bird — a small commuter crossing the sky now and then, gone
+      // once the sun gets serious. Two paper shapes, a mustard beak, and
+      // a wing that snaps between two frames in bursts: flap-flap-glide,
+      // the oldest bird in cartooning. Some crossings bring a friend.
+      if (night < 0.4) {
+        const CYCLE = 37; // seconds between crossings — prime, never syncs with the clouds
+        const cyc = Math.floor(now / CYCLE);
+        const ct = (now % CYCLE) / 14; // 14s on screen, the rest elsewhere
+        if (ct < 1) {
+          const dir = hash01(cyc * 13 + 5) > 0.5 ? 1 : -1;
+          const bdx = dir > 0 ? ct * (W + 90) - 45 : W + 45 - ct * (W + 90);
+          // altitude picked per crossing, a lazy bob on the way across
+          const bdy =
+            16 + hash01(cyc * 13 + 6) * floorY * 0.22 + Math.sin(ct * Math.PI * 3) * 7;
+          const bs = 1 + hash01(cyc * 13 + 7) * 0.4; // some days a bigger bird
+          const pair = hash01(cyc * 13 + 8) < 0.3; // some days a friend trails along
+          ctx.lineWidth = 1.5;
+          ctx.lineJoin = "round";
+          ctx.strokeStyle = OUTLINE;
+          for (const [ox, oy, os, oph] of pair
+            ? ([
+                [0, 0, 1, 0],
+                [-24, -7, 0.75, 1.9],
+              ] as const)
+            : ([[0, 0, 1, 0]] as const)) {
+            ctx.save();
+            ctx.translate(bdx + ox * bs * dir, bdy + oy * bs);
+            ctx.scale(dir * bs * os, bs * os);
+            // flap in bursts, glide between — no tween on the wing
+            const flapping = Math.sin(now * 1.6 + cyc + oph) > -0.3;
+            const up = flapping && Math.floor(now * 9 + oph) % 2 === 0;
+            ctx.fillStyle = PAPER;
+            // tail
+            ctx.beginPath();
+            ctx.moveTo(-5.5, -1);
+            ctx.lineTo(-10.5, -3.5);
+            ctx.lineTo(-9, 1);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            // beak — mustard, like everything worth chasing around here
+            ctx.fillStyle = MUSTARD;
+            ctx.beginPath();
+            ctx.moveTo(5.5, -1.5);
+            ctx.lineTo(9.5, 0);
+            ctx.lineTo(5.5, 1.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            // body — one plump blob, nose up a touch
+            ctx.fillStyle = PAPER;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, 6.5, 4.2, -0.12, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            // the wing — a chunky leaf pivoting off the shoulder,
+            // swept back whichever frame it's on
+            ctx.beginPath();
+            if (up) {
+              ctx.moveTo(-2.5, -2);
+              ctx.quadraticCurveTo(-7.5, -9, -8, -10);
+              ctx.quadraticCurveTo(-3.5, -8.5, 2, -1.5);
+            } else {
+              ctx.moveTo(-2.5, -0.5);
+              ctx.quadraticCurveTo(-6, 5.5, -6.5, 6.5);
+              ctx.quadraticCurveTo(-1.5, 5.5, 2, 0.5);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            // eye — the same dot everyone here wears
+            ctx.fillStyle = OUTLINE;
+            ctx.beginPath();
+            ctx.arc(3.2, -1.3, 0.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+          }
+          ctx.lineWidth = 1;
+        }
+      }
+
       // the city — two flat skyline layers cut from the sky's own color,
       // back layer tall and pale, front layer low and deep. Big slabs and
       // thin towers, every roof capped with the same soft corner radius;
