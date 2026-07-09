@@ -1964,7 +1964,9 @@ export function Hoop() {
         if (a > 0.95) popRef.current = null;
         else {
           const size = Math.round(46 - 12 * Math.min(a / 0.12, 1)); // slams in
-          const px2 = sx(level.rim.x + RIM_GAP / 2);
+          // centered in the viewport, not on the rim — rims live near
+          // the edge on portrait and the long calls clipped offscreen
+          const px2 = W / 2;
           const py2 = sy(level.rim.y + 0.7) - a * 18;
           ctx.font = `700 ${size}px ${DISPLAY}`;
           ctx.textAlign = "center";
