@@ -998,9 +998,9 @@ export function Hoop() {
     // the clip. Thin against the outline, like the reference.
     ctx.rotate(-rot);
     ctx.strokeStyle = OUTLINE;
-    // ~65% of the outline's weight — the reference ball's seams are
-    // bold ink lines, not hairlines
-    ctx.lineWidth = Math.max(1.2, r * 0.13);
+    // ~80% of the outline's weight, and both run light — at the zoomed-in
+    // span-fit scales heavy ink made the ball read as a black knot
+    ctx.lineWidth = Math.max(1, r * 0.08);
     ctx.beginPath();
     ctx.moveTo(-r, 0);
     ctx.quadraticCurveTo(0, r * 0.35, r, 0);
@@ -1015,7 +1015,7 @@ export function Hoop() {
     ctx.restore();
     // re-ink the leather over the clipped edges
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = Math.max(1.2, r * 0.14);
+    ctx.lineWidth = Math.max(1.2, r * 0.1);
     ctx.beginPath();
     ctx.arc(bx, by, r, 0, Math.PI * 2);
     ctx.stroke();
