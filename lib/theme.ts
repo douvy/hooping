@@ -35,8 +35,10 @@ export const THEME = {
   hoodie: "#c3c7cb",
   /** the hoodie's kangaroo pocket — the same fleece, one stop darker */
   pocket: "#a9adb3",
-  /** the cream sole band on his boots */
-  cream: "#f0e3c6",
+  /** his sneakers — grape 5s: the midsole purple and the teal of the
+   * shark teeth and collar; the upper is paper white */
+  grape: "#4b34a5",
+  teal: "#3fd0c5",
 } as const;
 
 /** one sky per level — afternoon cooling through sunset into night.

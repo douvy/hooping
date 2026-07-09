@@ -371,10 +371,9 @@ export function Hoop() {
     // two-frame head turn is the oldest trick in cartooning.
     side = false,
   ) => {
-    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND, hoodie: HOODIE, pocket: POCKET, cream: CREAM } = THEME;
+    const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND, hoodie: HOODIE, pocket: POCKET, grape: GRAPE, teal: TEAL } = THEME;
     const age = now - eventAtRef.current;
     let dy = 0;
-    let dx = 0;
     // he's even-keeled: beating the game gets the double hop, a make
     // gets one modest hop, a miss doesn't move him
     if (pose === "triumph") dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
@@ -382,9 +381,8 @@ export function Hoop() {
     // holding the ball he's set — crouch into the pull, no bouncing
     else if (pose === "aim") dy = dragRef.current ? 1 : 0;
     else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
-    if (pose === "panic") dx = Math.floor(now / 0.09) % 2 ? 1 : -1; // tremble
 
-    const cx = feetX + dx * k;
+    const cx = feetX;
     const foot = floorY + dy * k;
     // Construction: one chunky rounded-square head, tiny stoic features
     // low on the face, a green hoodie bunched off the left shoulder,
@@ -424,62 +422,75 @@ export function Hoop() {
       ctx.lineWidth = 1.5 * k;
       ctx.stroke();
     }
-    // shoes — copied off the pixel reference: a solid ink boot with a
-    // paper window inset below the top band (the tongue, a tan wedge
-    // folded into its toe corner), a tan stripe stepped in cream above
-    // the sole, and thin chromatic edges — blue up the heel, gold down
-    // the toe. Palette swapped to ours: ink for navy, paper/cream for
-    // the whites, his face-tan for the leather.
+    // shoes — grape 5s off the pixel reference: white leather upper,
+    // grape midsole with teal shark teeth biting up out of it, a teal
+    // splash at the collar, the ink line holding the silhouette
     for (const fx of side ? [-0.9, 0.9] : [-2.0, 2.0]) {
       const bx = cx + fx * k;
       // in profile the boot points at the rim — heel tucked, toe long
       const bx0 = bx - (side ? 1.1 : 1.8) * k;
       const bw = (side ? 3.4 : 3.6) * k;
-      const bh = 2.3 * k;
-      ctx.beginPath();
-      ctx.roundRect(
-        bx0,
-        foot - bh,
-        bw,
-        bh,
-        side
-          ? [1.0 * k, 1.3 * k, 0.9 * k, 0.35 * k]
-          : [1.1 * k, 1.1 * k, 0.45 * k, 0.45 * k],
-      );
-      ctx.fillStyle = OUTLINE;
+      const bh = 1.6 * k;
+      // the tongue — a wide low tab stepping up off the flat collar on
+      // the toe side, drawn first so the collar line crosses its base.
+      // In profile only the near shoe wears one; the far shoe's tongue
+      // would poke out of the near boot's silhouette.
+      if (!side || fx > 0) {
+        ctx.beginPath();
+        ctx.roundRect(
+          bx0 + bw - 1.55 * k,
+          foot - bh - 0.35 * k,
+          1.3 * k,
+          0.8 * k,
+          [0.25 * k, 0.25 * k, 0, 0],
+        );
+        ctx.fillStyle = PAPER;
+        ctx.fill();
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = lw;
+        ctx.stroke();
+      }
+      // the boot — flat collar, rounded sole corners
+      const shape = () => {
+        ctx.beginPath();
+        ctx.roundRect(
+          bx0,
+          foot - bh,
+          bw,
+          bh,
+          side
+            ? [0.1 * k, 0.1 * k, 0.9 * k, 0.35 * k]
+            : [0.1 * k, 0.1 * k, 0.45 * k, 0.45 * k],
+        );
+      };
+      shape();
+      ctx.fillStyle = PAPER; // the white upper
       ctx.fill();
       ctx.save();
       ctx.clip();
-      // the chromatic edges
-      ctx.fillStyle = HEADBAND;
-      ctx.fillRect(bx0, foot - bh, 0.28 * k, bh);
-      ctx.fillStyle = YELLOW;
-      ctx.fillRect(bx0 + bw - 0.28 * k, foot - bh, 0.28 * k, bh);
-      // the paper window, inset all around
-      const wx0 = bx0 + 0.42 * k;
-      const ww = bw - 0.84 * k;
-      ctx.fillStyle = PAPER;
-      ctx.fillRect(wx0, foot - 1.95 * k, ww, 0.9 * k);
-      // tan wedge folded into the window's toe corner
-      ctx.fillStyle = FACE;
+      // the grape midsole
+      ctx.fillStyle = GRAPE;
+      ctx.fillRect(bx0, foot - 0.7 * k, bw, 0.7 * k);
+      // shark teeth — three teal flames leaning toward the toe
+      ctx.fillStyle = TEAL;
       ctx.beginPath();
-      ctx.moveTo(wx0 + ww * 0.45, foot - 1.05 * k);
-      ctx.lineTo(wx0 + ww, foot - 1.6 * k);
-      ctx.lineTo(wx0 + ww, foot - 1.05 * k);
-      ctx.closePath();
+      for (let i = 0; i < 3; i++) {
+        const x0 = bx0 + bw * (0.06 + i * 0.32);
+        ctx.moveTo(x0, foot - 0.65 * k);
+        ctx.lineTo(x0 + bw * 0.2, foot - 1.05 * k);
+        ctx.lineTo(x0 + bw * 0.28, foot - 0.65 * k);
+      }
       ctx.fill();
-      // the tan stripe over the sole, stepped in cream on the toe side
-      ctx.fillStyle = FACE;
-      ctx.fillRect(wx0, foot - 0.75 * k, ww, 0.33 * k);
-      ctx.fillStyle = CREAM;
-      ctx.beginPath();
-      ctx.moveTo(wx0 + ww * 0.4, foot - 0.75 * k);
-      ctx.lineTo(wx0 + ww, foot - 0.75 * k);
-      ctx.lineTo(wx0 + ww, foot - 0.56 * k);
-      ctx.lineTo(wx0 + ww * 0.55, foot - 0.56 * k);
-      ctx.closePath();
-      ctx.fill();
+      // the collar splash at the heel top — profile only; head-on the
+      // collar hides behind the pant leg
+      if (side) {
+        ctx.fillRect(bx0, foot - bh, 0.75 * k, 0.4 * k);
+      }
       ctx.restore();
+      shape();
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = lw;
+      ctx.stroke();
     }
     // the legs left strokeStyle on fur blue; everything below inks
     ctx.strokeStyle = OUTLINE;
@@ -530,7 +541,6 @@ export function Hoop() {
     // Shooting form (aim, watch) draws them after the head — forearms
     // cross in front of the face holding a real set shot. Everything
     // else keeps them behind the body.
-    const flail = Math.floor(now / 0.14) % 2 === 0;
     // [elbowX, elbowY, handX, handY] per side, in k units off the feet
     let arms: readonly (readonly [number, number, number, number])[] =
       pose === "triumph"
@@ -545,9 +555,9 @@ export function Hoop() {
             ] // one fist up, off arm easy — a made shot is the job
           : pose === "panic"
             ? [
-                [-5.0, -10.2, -7.4, flail ? -11.0 : -9.0],
-                [5.0, -10.2, 7.4, flail ? -9.0 : -11.0],
-              ] // flailing
+                [-5.0, -10.2, -6.8, -10.2],
+                [5.0, -10.2, 6.8, -10.2],
+              ] // hands held out, steady — braced, not flailing
             : pose === "rest"
               ? [
                   [-3.9, -7.9, -4.4, -5.6],
@@ -860,7 +870,8 @@ export function Hoop() {
     ctx.lineWidth = feat;
     ctx.lineCap = "round";
     if (pose === "panic") {
-      // wide whites, pinprick pupils, small open mouth
+      // wide whites, pinprick pupils, mouth pressed flat — he's
+      // watching the rattle like a deploy, not screaming at it
       ctx.fillStyle = PAPER;
       for (const ex of [-1.9, 1.9]) {
         ctx.beginPath();
@@ -874,8 +885,9 @@ export function Hoop() {
         ctx.fill();
       }
       ctx.beginPath();
-      ctx.ellipse(cx, foot - 11.4 * k, 0.55 * k, 0.75 * k, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
+      ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
+      ctx.stroke();
     } else if (pose === "triumph") {
       // ^ ^ eyes and a round grin — the one time he lets it show
       for (const ex of [-1.9, 1.9]) {
@@ -944,11 +956,10 @@ export function Hoop() {
     const markX = cx + 4.5 * k;
     const markY = headY - headR - 1.6 * k;
     if (pose === "panic") {
-      // sweat, flung side to side
-      const sxm = flail ? cx - 4.5 * k : markX;
+      // one still sweat bead at the temple — concerned, composed
       ctx.fillStyle = HEADBAND;
       ctx.beginPath();
-      ctx.ellipse(sxm, markY, 0.6 * k, 0.9 * k, 0, 0, Math.PI * 2);
+      ctx.ellipse(markX, markY, 0.6 * k, 0.9 * k, 0, 0, Math.PI * 2);
       ctx.fill();
     }
     if (pose === "triumph") {
@@ -2381,16 +2392,17 @@ export function Hoop() {
             }`}
             onPointerDown={advance}
           >
-            <div className="flex w-72 max-w-[85%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-8 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both]">
+            <div className="flex w-80 max-w-[88%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-8 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both]">
               {phase === "dead" ? (
                 <>
                   <h2 className="font-display text-3xl font-bold text-accent-negative">
                     Game Over
                   </h2>
-                  <p className="text-xs text-muted">
-                    died on level {levelIdx + 1}
-                    {last ? ` — ${autopsy(last)}` : ""}
-                  </p>
+                  {bestDepth > 0 && (
+                    <p className="text-xs text-muted">
+                      best: level {bestDepth} cleared
+                    </p>
+                  )}
                   {/* the near-miss, named — dying at the frontier is the
                       strongest retry trigger in the game */}
                   {bestDepth > 0 && levelIdx === bestDepth && (
@@ -2449,10 +2461,8 @@ export function Hoop() {
                 </>
               )}
               <p className="text-xs text-muted">
-                GAME {run} · BEST {bestDepth}/{LEVELS.length}
-                <span className="block">
-                  {buckets} CAREER {buckets === 1 ? "BUCKET" : "BUCKETS"}
-                </span>
+                GAME {run} · {buckets} CAREER{" "}
+                {buckets === 1 ? "BUCKET" : "BUCKETS"}
               </p>
               {/* the primary action wears the ball's mustard and a real
                   cast shadow — hover lifts it off the paper, pressing

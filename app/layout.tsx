@@ -44,7 +44,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hooping.io"),
-  title: "Hooping — six trick shots, one ball",
+  title: "Hooping",
   description,
   openGraph: {
     title: "Hooping",
