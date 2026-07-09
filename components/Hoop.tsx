@@ -410,10 +410,12 @@ export function Hoop() {
     ctx.lineCap = "round";
 
     // legs — longer than a plush toy's, still chunky. In profile they
-    // tuck together, the near leg mostly covering the far one.
+    // tuck together, the near leg mostly covering the far one, and run
+    // longer — the shooting stance stands a head taller than the
+    // frontal reaction shots.
     for (const lx of side ? [-0.9, 0.9] : [-1.8, 1.8]) {
       ctx.beginPath();
-      ctx.moveTo(cx + lx * k, foot - 8.2 * k);
+      ctx.moveTo(cx + lx * k, foot - (side ? 10.4 : 8.2) * k);
       ctx.lineTo(cx + lx * k, foot - 1.2 * k);
       ctx.strokeStyle = OUTLINE;
       ctx.lineWidth = 1.5 * k + lw * 1.6;
@@ -491,7 +493,7 @@ export function Hoop() {
     // grows upward (shoulders at -13.2) so the chest isn't a stub
     // either — the head and arms ride up with it. Both views share the
     // proportions; only the chest depth differs.
-    if (side) ctx.roundRect(cx - 2.1 * k, foot - 13.2 * k, 4.2 * k, 5.6 * k, [1.7 * k, 1.7 * k, 0, 0]);
+    if (side) ctx.roundRect(cx - 2.1 * k, foot - 15.4 * k, 4.2 * k, 7.0 * k, [1.7 * k, 1.7 * k, 0, 0]);
     else ctx.roundRect(cx - 3.2 * k, foot - 13.2 * k, 6.4 * k, 5.6 * k, [1.7 * k, 1.7 * k, 0, 0]);
     ctx.fill();
     ctx.lineWidth = Math.max(1.2, lw * 0.75); // big flat shape, lighter line
@@ -571,23 +573,33 @@ export function Hoop() {
     // ball. Nothing crosses the face or pokes behind the back.
     if (side && pose === "aim")
       arms = [
-        [0.3, -13.0, 2.8, -19.3],
-        [5.0, -11.0, 3.9, -19.8], // upper arm longer, up and forward;
-        // forearm leans back toward the head to the ball, like the frame
+        // guide elbow tucked up behind the head so its cut end never
+        // peeks out on the torso under the face
+        [2.0, -16.6, 5.4, -21.5],
+        [7.6, -14.8, 6.5, -22.0], // upper arm angles up and forward from
+        // the socket; the long forearm carries the ball high overhead
+
       ];
     else if (side && pose === "watch")
       arms = [
-        [0.8, -12.0, 2.2, -14.8], // guide hand stays up through the
+        [0.8, -13.6, 2.2, -16.4], // guide hand stays up through the
         // follow-through, half-raised under the shooting arm
-        [2.8, -12.5, 6.6, -16.2], // shooting arm out toward the rim, held
+        [2.8, -14.1, 7.4, -18.2], // shooting arm out toward the rim, held
       ];
     const drawArms = () => {
       arms.forEach(([ex2, ey2, hx, hy], i) => {
         // first entry is always his left arm — the hand may cross the
         // midline (guide hand on the ball), so side comes from order.
-        // In profile the shoulders stack up near the chest's midline.
-        const ax = cx + (i === 0 ? -3.0 : 3.0) * (side ? 0.3 : 1) * k; // the shoulder
-        const ay = foot - 11.4 * k; // shoulders at the taller chest's top
+        // In profile the shoulders stack up near the chest's midline —
+        // except the set point's shooting shoulder, which sits out at
+        // the chest's front edge instead of buried mid-body.
+        const shoulderX =
+          side && pose === "aim" && i === 1
+            ? 2.3
+            : (i === 0 ? -3.0 : 3.0) * (side ? 0.3 : 1);
+        const ax = cx + shoulderX * k; // the shoulder
+        // shoulders at the chest's top — the profile chest sits higher
+        const ay = foot - (side ? 13.4 : 11.4) * k;
         const elX = cx + ex2 * k;
         const elY = foot + ey2 * k;
         const handX = cx + hx * k;
@@ -657,8 +669,8 @@ export function Hoop() {
       ctx.save();
       // nudged back off the chest's midline — clears room up front for
       // the shooting arm
-      // -3.0k: the head rides up with the taller profile torso
-      ctx.translate(cx - 0.6 * k, chinY - 3.0 * k);
+      // -5.2k: the head rides up with the taller profile torso
+      ctx.translate(cx - 0.6 * k, chinY - 5.2 * k);
       ctx.scale(HS, HS);
       ctx.translate(-cx, -chinY);
       const skull = () => {
@@ -1768,9 +1780,10 @@ export function Hoop() {
       const sideOn = pose === "aim" || pose === "watch";
       // he stands a step behind the launch point, so the held ball sits
       // up and in front of his forehead — the set point, not a head
-      // rest. The aim ball draws after him, so where it overlaps his
-      // crown it reads as in front, which is exactly right.
-      drawCreature(ctx, sx(level.launch.x) - 4.4 * k, floorY, k, pose, now, sideOn);
+      // rest, with the shooting arm reaching for it. The aim ball draws
+      // after him, so where it overlaps his crown it reads as in front,
+      // which is exactly right.
+      drawCreature(ctx, sx(level.launch.x) - 7.0 * k, floorY, k, pose, now, sideOn);
       // the shooting palm — drawn after the held ball so it reads as
       // the hand cupping its underside; the wrist mitten below-left
       // closes the arm
@@ -1783,6 +1796,11 @@ export function Hoop() {
         ctx.fill();
         ctx.stroke();
       };
+      // the HELD ball rides above the true launch point — the long
+      // forearms carry it high overhead. Cosmetic only: the shot still
+      // leaves from launch, and the snap down on release is smaller
+      // than one frame of ball travel.
+      const setLift = 2.2 * k;
 
       if (ph === "flying" && shot && !shot.state.done) {
         const bx2 = sx(shot.state.x);
@@ -1811,8 +1829,8 @@ export function Hoop() {
         }
       } else if (ph === "enter") {
         // ball in hand, waiting
-        drawBall(ctx, sx(level.launch.x), sy(level.launch.y), ballR, ballRotRef.current);
-        palmUnderBall(sx(level.launch.x), sy(level.launch.y));
+        drawBall(ctx, sx(level.launch.x), sy(level.launch.y) - setLift, ballR, ballRotRef.current);
+        palmUnderBall(sx(level.launch.x), sy(level.launch.y) - setLift);
       } else if (ph === "dead" && shot) {
         // the dead ball lies where it stopped
         ballShadow(shot.state.x, Math.max(shot.state.y, BALL_R));
@@ -1822,7 +1840,7 @@ export function Hoop() {
       // aiming — ball in his raised hands, the pull, the readout
       if (ph === "aim") {
         let bx = sx(level.launch.x);
-        let by = sy(level.launch.y);
+        let by = sy(level.launch.y) - setLift;
         // the ghost of the last pull on this level — a faint dashed
         // reference to line the live arrow up against. Mobile's
         // space-replay: the hands still execute, the eyes get a target.
