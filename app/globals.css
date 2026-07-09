@@ -39,8 +39,9 @@
 }
 
 html {
-  /* Reserve scrollbar space so overlays locking body scroll don't shift the page */
-  scrollbar-gutter: stable;
+  /* The page never scrolls — the game is the screen. Kill pull-to-refresh
+     and rubber-banding so an aim drag can never move the page. */
+  overscroll-behavior: none;
 }
 
 body {

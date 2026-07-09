@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
@@ -22,6 +22,18 @@ const plexSerif = IBM_Plex_Serif({
 
 const description =
   "Six trick shots, one ball. Make it and move up, miss once and you start over. Same bounce every time — no luck, just touch. How deep can you go?";
+
+// a game, not a document: no pinch zoom mid-aim, edge-to-edge on notched
+// phones (safe-area padding lives on the two chrome bars), browser chrome
+// tinted to match the header
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#4a5f7d",
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://hooping.io"),
@@ -47,7 +59,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${jetbrainsMono.variable} ${plexSerif.variable} font-sans`}>
-        <main className="min-h-screen">{children}</main>
+        {/* dvh, not vh — iOS Safari's 100vh overshoots the visible area
+            and leaves phantom scroll under the game */}
+        <main className="min-h-dvh">{children}</main>
         {/* Vercel-only: the insights script is served by their edge, so
             local/CI builds would 404 it and fail */}
         {process.env.VERCEL === "1" && <Analytics />}

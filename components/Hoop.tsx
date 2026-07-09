@@ -197,7 +197,17 @@ export function Hoop() {
 
   // rAF-mutable state, no React involvement
   const shotRef = useRef<Shooter | null>(null);
-  const dragRef = useRef<{ sx: number; sy: number; dx: number; dy: number } | null>(null);
+  // id: the one pointer that owns this drag — a second thumb resting on
+  // the glass must not steal or smear the aim. coarse: finger vs mouse,
+  // for the accidental-swipe threshold.
+  const dragRef = useRef<{
+    id: number;
+    coarse: boolean;
+    sx: number;
+    sy: number;
+    dx: number;
+    dy: number;
+  } | null>(null);
   const trailRef = useRef<{ x: number; y: number }[]>([]);
   const ballRotRef = useRef(0); // the leather spins in flight
   const sparksRef = useRef<Spark[]>([]);
@@ -1412,11 +1422,16 @@ export function Hoop() {
             ctx.globalAlpha = 1;
           }
         } else if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
-          // first-timer: nothing on screen explains the gesture — this does
+          // first-timer: nothing on screen explains the gesture — this
+          // does. 12px, and clamped so it can't run off a narrow phone.
+          const hint = "drag back anywhere — let go to shoot";
+          ctx.font = `12px ui-monospace, Menlo, monospace`;
+          const hx = Math.min(bx + 16, W - ctx.measureText(hint).width - 8);
           ctx.fillStyle = OUTLINE;
           ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now * 3);
-          ctx.fillText("drag back anywhere — let go to shoot", bx + 16, by - 16);
+          ctx.fillText(hint, hx, by - 16);
           ctx.globalAlpha = 1;
+          ctx.font = CANVAS_FONT;
         }
       }
 
@@ -1536,23 +1551,35 @@ export function Hoop() {
       advance(); // cleared → next level, dead/beat → run it back
       return;
     }
+    if (dragRef.current) return; // one finger owns the aim
     e.currentTarget.setPointerCapture(e.pointerId);
-    dragRef.current = { sx: e.clientX, sy: e.clientY, dx: e.clientX, dy: e.clientY };
+    dragRef.current = {
+      id: e.pointerId,
+      coarse: e.pointerType !== "mouse",
+      sx: e.clientX,
+      sy: e.clientY,
+      dx: e.clientX,
+      dy: e.clientY,
+    };
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
     const d = dragRef.current;
-    if (!d) return;
+    if (!d || e.pointerId !== d.id) return;
     d.dx = e.clientX;
     d.dy = e.clientY;
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
     const d = dragRef.current;
+    if (!d || e.pointerId !== d.id) return;
     dragRef.current = null;
-    if (!d || phaseRef.current !== "aim") return;
+    if (phaseRef.current !== "aim") return;
     const pull = Math.hypot(d.dx - d.sx, d.dy - d.sy);
-    if (pull < 10) return; // no free throws — a tap is not a shot
+    // no free throws — a tap is not a shot. Fingers get a fatter dead
+    // zone than mice: a 15px stray brush must not spend the run's one
+    // ball (min power lives at 96px of pull, so nothing real is lost)
+    if (pull < (d.coarse ? 25 : 10)) return;
     shoot(aimFromDrag(d));
   };
 
@@ -1613,6 +1640,16 @@ export function Hoop() {
       phase === "beat"
         ? `HOOPING game ${run}\n${trail} all ${LEVELS.length} levels, one ball\nhooping.io`
         : `HOOPING game ${run}\n${trail} died on level ${levelIdx + 1}\nhooping.io`;
+    // phones get the native share sheet; desktop copies. share() rejects
+    // when the user dismisses the sheet — that's a no-op, not a fallback.
+    if (navigator.share && matchMedia("(pointer: coarse)").matches) {
+      try {
+        await navigator.share({ text });
+      } catch {
+        // sheet dismissed
+      }
+      return;
+    }
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
@@ -1627,7 +1664,7 @@ export function Hoop() {
       {/* readout bar — the only chrome above the game: a deep slate blue,
           darker than every sky */}
       <div
-        className="flex items-center justify-between border-b px-4 py-2.5 sm:px-5"
+        className="flex items-center justify-between border-b pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]"
         style={{ backgroundColor: "#4a5f7d", borderColor: darken("#4a5f7d", 0.8) }}
       >
         <div className="flex items-baseline gap-4">
@@ -1675,7 +1712,9 @@ export function Hoop() {
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerCancel={() => (dragRef.current = null)}
+          onPointerCancel={(e) => {
+            if (dragRef.current?.id === e.pointerId) dragRef.current = null;
+          }}
         />
 
         {/* the verdict — a real panel, not canvas text. Tap anywhere
@@ -1737,7 +1776,7 @@ export function Hoop() {
       {/* status line — sits on the grass, continuing the canvas ground to
           the viewport bottom, so everything on it reads in white */}
       <div
-        className="flex min-h-10 items-center justify-between gap-4 px-4 py-2 font-mono text-xs text-[#fdfaf2] sm:px-5"
+        className="flex min-h-10 items-center justify-between gap-4 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))] font-mono text-xs text-[#fdfaf2]"
         style={{ backgroundColor: THEME.grass }}
       >
         {phase === "cleared" ? (
