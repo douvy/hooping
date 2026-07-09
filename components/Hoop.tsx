@@ -372,6 +372,13 @@ export function Hoop() {
     const headTop = headY - headR;
     const lw = Math.max(1.5, k * 0.9); // his cartoon line scales with him
 
+    // his shadow — stays on the ground when he hops, like the reference's
+    // flat unblurred pools under every object
+    ctx.fillStyle = withAlpha(OUTLINE, "2b");
+    ctx.beginPath();
+    ctx.ellipse(cx, floorY + 2, 4.5 * k, 1.1 * k, 0, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = lw;
     ctx.lineJoin = "round";
@@ -776,6 +783,12 @@ export function Hoop() {
       const floorY = Math.min(H - 32, (H + level.h * scale) / 2);
       const sx = (x: number) => ox + x * scale;
       const sy = (y: number) => floorY - y * scale;
+      // the ball's drawn radius — 20% over physics truth. The physics ball
+      // is deliberately kind (46% of the mouth vs regulation's ~53%); drawn
+      // dead honest it reads too small next to the chibi head. At 1.2 the
+      // picture shows a regulation-looking fit while the physics stays
+      // friendly underneath.
+      const ballR = Math.max(5, BALL_R * scale * 1.2);
 
       // step the sim
       const shot = shotRef.current;
@@ -899,56 +912,68 @@ export function Hoop() {
         ctx.globalAlpha = 1;
       }
 
-      // clouds — flat paper blobs drifting by, gone after dark
+      // clouds — flat paper cumulus drifting by, gone after dark. Built
+      // like the reference sky: a tall round head and two shoulder lobes
+      // sitting on a flat base, not a stretched lens. cy is the cloud's
+      // flat bottom.
       if (night < 0.8) {
         ctx.fillStyle = PAPER;
         ctx.globalAlpha = 0.9 * (1 - night);
         for (let i = 0; i < 4; i++) {
-          const cw = 46 + hash01(i * 9 + 2) * 50;
-          const cy = 20 + hash01(i * 9 + 3) * floorY * 0.35;
+          const cw = 60 + hash01(i * 9 + 2) * 80;
+          const cy = 20 + hash01(i * 9 + 3) * floorY * 0.32;
           const cx = ((hash01(i * 9 + 4) * W + now * (4 + i * 2)) % (W + cw * 2)) - cw;
+          const lean = (hash01(i * 9 + 5) - 0.5) * 0.16; // head sits off-center
+          // each lobe gets its own subpath (moveTo) — chained arcs draw
+          // connector lines whose self-intersections fill as holes
           ctx.beginPath();
-          ctx.ellipse(cx, cy, cw * 0.55, cw * 0.2, 0, 0, Math.PI * 2);
-          ctx.ellipse(cx - cw * 0.32, cy + cw * 0.06, cw * 0.3, cw * 0.14, 0, 0, Math.PI * 2);
-          ctx.ellipse(cx + cw * 0.32, cy + cw * 0.06, cw * 0.32, cw * 0.15, 0, 0, Math.PI * 2);
+          for (const [lx, ly, lr] of [
+            [lean, -0.26, 0.3],
+            [-0.32, -0.14, 0.18],
+            [0.28, -0.16, 0.2],
+          ] as const) {
+            ctx.moveTo(cx + (lx + lr) * cw, cy + ly * cw);
+            ctx.arc(cx + lx * cw, cy + ly * cw, lr * cw, 0, Math.PI * 2);
+          }
+          ctx.roundRect(cx - 0.46 * cw, cy - 0.12 * cw, 0.92 * cw, 0.12 * cw, 0.06 * cw);
           ctx.fill();
         }
         ctx.globalAlpha = 1;
       }
 
       // the city — two flat skyline layers cut from the sky's own color,
-      // back layer tall and pale, front layer low and deep. Windows warm
-      // up as the day goes. This is a playground, and the town is home.
+      // back layer tall and pale, front layer low and deep. Big slabs and
+      // thin towers, every roof capped with the same soft corner radius;
+      // same-color neighbors overlap into union silhouettes. One roof
+      // accent only, used sparsely: a little knob off one shoulder —
+      // anything pointier fights the soft language. Windows warm up as
+      // the day goes.
       for (const [f, hMin, hMax, seed] of [
-        [0.86, 34, 88, 700], // back
-        [0.72, 16, 48, 900], // front
+        [0.86, 0.18, 0.6, 700], // back — heights as fractions of the ground line
+        [0.72, 0.08, 0.32, 900], // front
       ] as const) {
         const bc = darken(SKY, f);
         ctx.fillStyle = bc;
-        for (let bx = -12 - seed * 0.01, bi = 0; bx < W; bi++) {
-          const bw = 30 + hash01(seed + bi * 3 + 1) * 48;
-          const bh = hMin + hash01(seed + bi * 3 + 2) * (hMax - hMin);
+        for (let bx = -30 - seed * 0.01, bi = 0; bx < W; bi++) {
+          const bw = 44 + hash01(seed + bi * 3 + 1) * 130;
+          const bh = (hMin + hash01(seed + bi * 3 + 2) * (hMax - hMin)) * floorY;
           const roof = hash01(seed + bi * 3 + 3);
+          const top = floorY - bh;
+          const cr = Math.min(12, bw * 0.15);
           ctx.beginPath();
-          if (roof < 0.25) {
-            // rounded top
-            ctx.moveTo(bx, floorY);
-            ctx.lineTo(bx, floorY - bh + bw * 0.25);
-            ctx.arc(bx + bw / 2, floorY - bh + bw * 0.25, bw / 2, Math.PI, 0);
-            ctx.lineTo(bx + bw, floorY);
-          } else {
-            ctx.rect(bx, floorY - bh, bw, bh);
-            if (roof > 0.72) {
-              // antenna
-              ctx.rect(bx + bw * 0.42, floorY - bh - 9, 2, 9);
-            }
+          ctx.roundRect(bx, top, bw, bh, [cr, cr, 0, 0]);
+          if (roof < 0.16) {
+            // the knob — a small rounded nub off one shoulder
+            ctx.roundRect(bx + bw * 0.14, top - 9, 16, 14, 5);
           }
           ctx.fill();
           if (night > 0.2) {
-            // lit windows — sparse, warm
+            // lit windows — sparse, warm, more attempts on bigger slabs
+            // so density stays even
+            const wn = Math.min(18, Math.round(3 + (bw * bh) / 2000));
             ctx.fillStyle = THEME.lamp;
             ctx.globalAlpha = 0.6 * night;
-            for (let wi = 0; wi < 6; wi++) {
+            for (let wi = 0; wi < wn; wi++) {
               if (hash01(seed + bi * 97 + wi * 13) > 0.3) continue;
               const wx = bx + 5 + hash01(seed + bi * 31 + wi * 7) * (bw - 11);
               const wy = floorY - bh + 8 + hash01(seed + bi * 53 + wi * 11) * (bh - 16);
@@ -957,7 +982,9 @@ export function Hoop() {
             ctx.globalAlpha = 1;
             ctx.fillStyle = bc;
           }
-          bx += bw + 3;
+          // overlap or gap, hung by eye — unions within a layer read as
+          // one silhouette, gaps show the layer behind
+          bx += bw * (0.72 + hash01(seed + bi * 3 + 4) * 0.55);
         }
       }
 
@@ -1055,6 +1082,25 @@ export function Hoop() {
       ctx.globalAlpha = 1;
       ctx.lineWidth = 1;
 
+      // flat ground shadows — reference rule: every body in the world
+      // sits on one. Solid ink at low alpha, no blur, centered under the
+      // object (side view — an offset shadow would read as depth we
+      // don't have).
+      const shadow = (px: number, rx: number) => {
+        ctx.fillStyle = withAlpha(OUTLINE, "2b");
+        ctx.beginPath();
+        ctx.ellipse(px, floorY + 2, rx, Math.max(2, rx * 0.28), 0, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      // the ball's shadow shrinks and thins with height — free altitude
+      // readout while the ball flies
+      const ballShadow = (wx: number, wy: number) => {
+        const h01 = Math.min(1, Math.max(0, wy / 4));
+        ctx.globalAlpha = 1 - 0.75 * h01;
+        shadow(sx(wx), ballR * (1.1 - 0.5 * h01));
+        ctx.globalAlpha = 1;
+      };
+
       // the hoop: glass, mount, iron, net
       const rimY = sy(level.rim.y);
       const frontX = sx(level.rim.x);
@@ -1085,6 +1131,7 @@ export function Hoop() {
         ctx.lineCap = "round";
         // the pole — solid ink, a signpost holding a sign
         const poleX = boardX + 5;
+        shadow(poleX, 9);
         ctx.strokeStyle = OUTLINE;
         ctx.lineWidth = 7;
         ctx.beginPath();
@@ -1145,33 +1192,52 @@ export function Hoop() {
         ctx.stroke();
         ctx.lineWidth = 1;
       }
-      // the net — outlined strands and rings, and a make punches it: the
-      // whole mesh kicks down and rings back like nylon
+      // the net — a real diamond mesh, ink under paper like every other
+      // line in the world: rim knots zigzag to a waist, waist to the hem,
+      // two rows of diamonds. A make punches the whole lattice down and
+      // it rings back like nylon.
       {
         const nt = madeRef.current ? now - eventAtRef.current : Infinity;
         const kick = nt < 0.6 ? Math.exp(-nt * 7) * Math.cos(nt * 20) * 7 : 0;
         const topW = backX - frontX;
         const netLen = scale * 0.38 + kick;
+        const midXc = (frontX + backX) / 2;
+        // x of knot t (0..1) on a band of width w, centered on the mouth
+        const at = (w: number, t: number) => midXc - w / 2 + w * t;
+        const midW = topW * 0.72;
         const botW = topW * 0.55;
-        const midX = (frontX + backX) / 2;
-        const netB = rimY + netLen;
+        const midY = rimY + netLen * 0.52;
+        const botY = rimY + netLen;
         ctx.lineCap = "round";
         ctx.beginPath();
-        for (const tt of [0, 1 / 3, 2 / 3, 1] as const) {
-          ctx.moveTo(frontX + topW * tt, rimY);
-          ctx.lineTo(midX - botW / 2 + botW * tt, netB);
+        // rim → waist: each rim knot drops to its neighboring waist knots
+        for (let i = 0; i < 4; i++) {
+          const tx = at(topW, i / 3);
+          if (i > 0) {
+            ctx.moveTo(tx, rimY);
+            ctx.lineTo(at(midW, (i - 0.5) / 3), midY);
+          }
+          if (i < 3) {
+            ctx.moveTo(tx, rimY);
+            ctx.lineTo(at(midW, (i + 0.5) / 3), midY);
+          }
         }
-        for (const rr of [0.45, 0.82] as const) {
-          const w = topW + (botW - topW) * rr;
-          const y = rimY + netLen * rr;
-          ctx.moveTo(midX - w / 2, y);
-          ctx.lineTo(midX + w / 2, y);
+        // waist → hem, then the hem itself
+        for (let j = 0; j < 3; j++) {
+          const mx = at(midW, (j + 0.5) / 3);
+          ctx.moveTo(mx, midY);
+          ctx.lineTo(at(botW, j / 3), botY);
+          ctx.moveTo(mx, midY);
+          ctx.lineTo(at(botW, (j + 1) / 3), botY);
         }
+        ctx.moveTo(at(botW, 0), botY);
+        ctx.lineTo(at(botW, 1), botY);
+        // thinner cord than the old four strands — the mesh is denser
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = 3.5;
+        ctx.lineWidth = 3;
         ctx.stroke();
         ctx.strokeStyle = PAPER;
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.6;
         ctx.stroke();
       }
       // the iron — redder than the ball so contact reads, flashing gold
@@ -1190,8 +1256,12 @@ export function Hoop() {
       ctx.stroke();
       ctx.lineWidth = 1;
 
-      // obstacle slabs — concrete in the cartoon line
+      // obstacle slabs — concrete in the cartoon line. Ground-standing
+      // slabs sit on a shadow like everything else; floating ones don't.
       for (const wl of level.walls) {
+        if (Math.min(wl.y1, wl.y2) === 0) {
+          shadow(sx(wl.y1 <= wl.y2 ? wl.x1 : wl.x2), 11);
+        }
         ctx.beginPath();
         ctx.moveTo(sx(wl.x1), sy(wl.y1));
         ctx.lineTo(sx(wl.x2), sy(wl.y2));
@@ -1282,7 +1352,7 @@ export function Hoop() {
       // seams spinning with the flight, reference-style: no shading.
       // Drawn at true physics size so rim reads honest.
       const drawBall = (bx: number, by: number) => {
-        const r = Math.max(5, BALL_R * scale);
+        const r = ballR;
         ctx.save();
         ctx.translate(bx, by);
         ctx.fillStyle = MUSTARD;
@@ -1294,7 +1364,9 @@ export function Hoop() {
         // inside the clip. Thin against the outline, like the reference.
         ctx.rotate(-ballRotRef.current);
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = Math.max(1, r * 0.09);
+        // ~65% of the outline's weight — the reference ball's seams are
+        // bold ink lines, not hairlines
+        ctx.lineWidth = Math.max(1.2, r * 0.13);
         ctx.beginPath();
         ctx.moveTo(-r, 0);
         ctx.quadraticCurveTo(0, r * 0.35, r, 0);
@@ -1337,10 +1409,11 @@ export function Hoop() {
       if (ph === "flying" && shot && !shot.state.done) {
         const bx2 = sx(shot.state.x);
         const by2 = sy(shot.state.y);
+        ballShadow(shot.state.x, shot.state.y);
         if (heat >= 2) {
           // the heater — a flickering halo on the streaking ball
           const hc = heat >= 4 ? THEME.rim : YELLOW;
-          const hr = Math.max(5, BALL_R * scale) * (1.8 + 0.2 * Math.sin(now * 24));
+          const hr = ballR * (1.8 + 0.2 * Math.sin(now * 24));
           const halo = ctx.createRadialGradient(bx2, by2, 0, bx2, by2, hr);
           halo.addColorStop(0, withAlpha(hc, "55"));
           halo.addColorStop(1, withAlpha(hc, "00"));
@@ -1352,6 +1425,7 @@ export function Hoop() {
         drawBall(sx(level.launch.x), sy(level.launch.y)); // ball in hand, waiting
       } else if (ph === "dead" && shot) {
         // the dead ball lies where it stopped
+        ballShadow(shot.state.x, Math.max(shot.state.y, BALL_R));
         drawBall(sx(shot.state.x), sy(Math.max(shot.state.y, BALL_R)));
       }
 
