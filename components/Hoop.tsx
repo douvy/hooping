@@ -951,28 +951,40 @@ export function Hoop() {
         }
       }
 
-      // the rafters — one pennant per level you've ever cleared, hung
-      // top-right like a small gym's banner wall. The trophy case is the
-      // world, not a stat readout.
-      ctx.strokeStyle = OUTLINE;
-      ctx.lineWidth = 1.5;
-      ctx.lineJoin = "round";
-      for (let i = 0; i < bestDepthRef.current; i++) {
-        const fx = W - 26 - i * 22;
+      // the rafters — one pennant per level you've ever cleared, strung
+      // on a sagging rope top-right like a small gym's banner wall. The
+      // trophy case is the world, not a stat readout.
+      const nBest = bestDepthRef.current;
+      if (nBest > 0) {
+        const ropeR = W - 12;
+        const ropeL = ropeR - nBest * 22 - 10;
+        const sag = 4;
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
         ctx.beginPath();
-        ctx.moveTo(fx, 0);
-        ctx.lineTo(fx, 7);
+        ctx.moveTo(ropeL, 0);
+        ctx.quadraticCurveTo((ropeL + ropeR) / 2, sag * 2, ropeR, 0);
         ctx.stroke();
-        ctx.fillStyle = [PAPER, MUSTARD, YELLOW][i % 3];
-        ctx.beginPath();
-        ctx.moveTo(fx - 5, 7);
-        ctx.lineTo(fx + 5, 7);
-        ctx.lineTo(fx, 22);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        // each level flies its own color, left to right — six is the gold
+        const flags = [THEME.rim, THEME.headband, MUSTARD, THEME.grass, PAPER, YELLOW];
+        for (let i = 0; i < nBest; i++) {
+          const px2 = ropeL + 16 + i * 22;
+          // where the rope hangs at this x — quadratic from ends at y=0
+          const t = (px2 - ropeL) / (ropeR - ropeL);
+          const py2 = 4 * sag * t * (1 - t);
+          const len = 13 + hash01(i * 7 + 70) * 5; // hung by hand, not machine
+          ctx.fillStyle = flags[i % flags.length];
+          ctx.beginPath();
+          ctx.moveTo(px2 - 5, py2);
+          ctx.lineTo(px2 + 5, py2);
+          ctx.lineTo(px2, py2 + len);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+        ctx.lineWidth = 1;
       }
-      ctx.lineWidth = 1;
 
       // the ground — an asphalt court cap set in bright grass, everything
       // wearing the outline
