@@ -2555,35 +2555,34 @@ export function Hoop() {
       const level = LEVELS[levelIdxRef.current];
       const W = canvas.width / dpr;
       const H = canvas.height / dpr;
-      // fit the ACTION SPAN (a step behind the shooter → a step past the
-      // pole) by both axes — court outside that span is physics runway,
-      // not picture, and on a width-limited portrait phone it was costing
-      // 25-35% of the zoom and floating the hoop mid-frame. Cropped, the
-      // hoop sits near the right edge and everything draws bigger; misses
-      // still exit stage right, just off-camera. Zoomed past a strict fit:
-      // crop a sliver of side margin and the empty sky above 4.7m
-      // (ceilings live at 4.4-4.5). The rim is the protagonist — high
-      // arcs already leave the frame, and that's drama, not a bug.
-      // 0.75m behind the launch point covers the shooter exactly: he
-      // stands ~0.33m back (7k in creature units) plus ~0.2m of body,
-      // plus a step of air — the lawn beyond that was pure zoom tax
-      const x0 = Math.max(0, level.launch.x - 0.75);
+      // fit the ACTION SPAN — a breath behind the shooter to a breath
+      // past the glass — by both axes and center it. Court outside the
+      // span is physics runway, not picture; misses still exit stage
+      // right, just off-camera, and the empty sky above 4.7m stays
+      // cropped (ceilings live at 4.4-4.5). The pads ARE the
+      // composition: 1.5m behind the launch is the shooter's stance
+      // (~0.33m back) plus his body plus a real margin of lawn — the
+      // frame is allowed past the court's x=0 edge, the ground draws
+      // full-width anyway and clamping there pinned him to the bezel;
+      // 0.55m past the glass covers the pole plus a matching margin.
+      // STRICT fit, no overzoom — an object flush against a phone's
+      // bezel reads as a rendering bug, and both edge objects here are
+      // protagonists.
+      const x0 = level.launch.x - 1.5;
       const spanEnd = Math.min(
         level.w,
         level.rim.x + RIM_GAP + BOARD_OFF + 0.55,
       );
       const spanW = spanEnd - x0;
-      const scale = Math.min(W / (spanW * 0.93), (H - 20) / 4.7);
-      // the 0.93 overzoom crops ~7% of the span — ALL of it from behind
-      // the board. The shooter keeps his fixed breathing room; the dead
-      // runway behind the glass eats the difference. Wide screens still
-      // center the span.
-      const ox = Math.max((W - spanW * scale) / 2, 0) - x0 * scale;
+      const scale = Math.min(W / spanW, (H - 20) / 4.7);
+      const ox = (W - spanW * scale) / 2 - x0 * scale;
       // wide screens pin the floor near the bottom — leaving room for the
       // 16px asphalt cap plus a band of grass; tall screens sit the court
-      // LOW (70/30 sky over grass) so the arc gets the headroom and the
-      // ball plays in the thumb zone instead of mid-air over dead lawn
-      const floorY = Math.min(H - 32, 0.7 * H + 0.3 * level.h * scale);
+      // LOW (30% of the leftover below, capped at 64px of foreground) so
+      // the arc gets the headroom and the ball plays in the thumb zone —
+      // a portrait phone was carrying 100px+ of dead lawn under the court
+      const grassBand = Math.min(0.3 * (H - level.h * scale), 64);
+      const floorY = Math.min(H - 32, H - grassBand);
       const sx = (x: number) => ox + x * scale;
       const sy = (y: number) => floorY - y * scale;
       // the ball's drawn radius — 20% over physics truth. The physics ball
