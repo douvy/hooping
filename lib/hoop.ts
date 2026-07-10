@@ -116,7 +116,9 @@ export const LEVELS: Level[] = [
     rim: { x: 5.6, y: 3.05 },
     board: true,
     walls: [
-      { x1: 3.6, y1: 0, x2: 3.6, y2: 3.5 },
+      // pole top 3.4: launch feedback had the keyhole under the ~50%
+      // spec on mobile (~44%); 3.4 sims at ~55% (3.3/3.2 overshoot)
+      { x1: 3.6, y1: 0, x2: 3.6, y2: 3.4 },
       { x1: 2.6, y1: 4.15, x2: 6.6, y2: 4.15 },
     ],
   },
