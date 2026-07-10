@@ -213,6 +213,41 @@ function drawCelestials(
     ctx.restore();
     ctx.globalAlpha = 1;
   }
+
+  // a shooting star — deep night only. The day sky has the bird; this
+  // is the night's one heartbeat. A streak every 41s (prime — never
+  // syncs with anything), 0.9s long: rare enough to feel like luck.
+  if (night > 0.7) {
+    const st = now - 20;
+    const cyc = Math.floor(st / 41);
+    const p = (st % 41) / 0.9;
+    if (st > 0 && p < 1) {
+      const x0 = (0.15 + hash01(cyc * 17 + 3) * 0.6) * W;
+      const y0 = (0.05 + hash01(cyc * 17 + 4) * 0.16) * floorY;
+      const dir = hash01(cyc * 17 + 5) > 0.5 ? 1 : -1;
+      const len = floorY * 0.24;
+      const hx = x0 + dir * p * len;
+      const hy = y0 + p * len * 0.5;
+      const fade =
+        Math.min(1, p / 0.15, (1 - p) / 0.3) * Math.min(1, (night - 0.7) / 0.3);
+      ctx.strokeStyle = THEME.paper;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 1.6;
+      ctx.globalAlpha = 0.7 * fade;
+      ctx.beginPath();
+      ctx.moveTo(hx - dir * len * 0.22, hy - len * 0.11);
+      ctx.lineTo(hx, hy);
+      ctx.stroke();
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = THEME.paper;
+      ctx.beginPath();
+      ctx.arc(hx, hy, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineCap = "butt";
+      ctx.lineWidth = 1;
+    }
+  }
 }
 
 // the city's daylight paint — Koriko rules: facades own their color
@@ -417,6 +452,8 @@ function drawSkyline(
   // ——— the front row — painted houses, Koriko rules ———
   let billboard = false;
   let steams = 0;
+  let cat = false;
+  const chimneys: { x: number; y: number }[] = [];
   const seed = 900;
   for (let bx = -24 * u, bi = 0; bx < W; bi++) {
     const bw = (54 + hash01(seed + bi * 3 + 1) * 76) * u;
@@ -455,10 +492,67 @@ function drawSkyline(
       ctx.fill();
       ctx.fillStyle = darken(rc, 0.85);
       ctx.fillRect(bx + 9 * u, top - rh, bw - 18 * u, 2.5 * u);
+      // a TV aerial on some lids — one line and two whiskers
+      if (hash01(seed + bi * 5 + 14) < 0.22) {
+        const ax = bx + bw * 0.74;
+        ctx.strokeStyle = darken(rc, 0.75);
+        ctx.lineWidth = 1.2 * u;
+        ctx.beginPath();
+        ctx.moveTo(ax, top - rh);
+        ctx.lineTo(ax, top - rh - 12 * u);
+        ctx.moveTo(ax - 5 * u, top - rh - 17 * u);
+        ctx.lineTo(ax, top - rh - 12 * u);
+        ctx.lineTo(ax + 5 * u, top - rh - 17 * u);
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
     } else {
       // flat parapet
       ctx.fillStyle = rc;
       ctx.fillRect(bx - 2 * u, top - 5 * u, bw + 4 * u, 6 * u);
+      // the cat — takes a parapet somewhere right of center for half a
+      // minute out of every 89s (prime), then leaves. Found, not
+      // presented, same law as the bird. Lamp eyes once it's dark.
+      if (!cat && bx > W * 0.5 && bx + bw < W * 0.95) {
+        cat = true;
+        const ct2 = now - 70;
+        const tIn = ct2 > 0 ? ct2 % 89 : -1;
+        if (tIn >= 0 && tIn < 26) {
+          const a = Math.min(1, tIn, 26 - tIn);
+          const dir = hash01(Math.floor(ct2 / 89) * 11 + 2) > 0.5 ? 1 : -1;
+          ctx.save();
+          ctx.translate(bx + bw * 0.5, top - 5 * u);
+          ctx.scale(dir * u, u);
+          ctx.globalAlpha = 0.85 * a;
+          ctx.fillStyle = THEME.outline;
+          ctx.beginPath();
+          ctx.ellipse(0, -4.5, 6, 4.5, 0, 0, Math.PI * 2); // sitting body
+          ctx.moveTo(-3.1, -8);
+          ctx.arc(-6.5, -8, 3.4, 0, Math.PI * 2); // head
+          ctx.moveTo(-8.8, -10);
+          ctx.lineTo(-8.2, -13.5); // far ear
+          ctx.lineTo(-6.5, -10.8);
+          ctx.moveTo(-5.2, -11);
+          ctx.lineTo(-4.2, -13.2); // near ear
+          ctx.lineTo(-3.4, -10.5);
+          ctx.fill();
+          // the tail — the only part that admits it's awake
+          const sw = Math.sin(now * 1.3) * 3;
+          ctx.strokeStyle = THEME.outline;
+          ctx.lineWidth = 1.8;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(5.5, -3);
+          ctx.quadraticCurveTo(10, -6, 10.5 + sw * 0.3, -12 + sw);
+          ctx.stroke();
+          if (night > 0.4) {
+            ctx.fillStyle = THEME.lamp;
+            ctx.fillRect(-8.4, -8.6, 1.4, 1.4);
+            ctx.fillRect(-5.9, -8.6, 1.4, 1.4);
+          }
+          ctx.restore();
+        }
+      }
     }
 
     // chimney — brick stub off-ridge; a couple of them still smoke
@@ -468,6 +562,7 @@ function drawSkyline(
       ctx.fillStyle = darken(fc, 0.72);
       ctx.fillRect(cx2 - 4 * u, ct, 8 * u, top - ct + 2 * u);
       ctx.fillRect(cx2 - 5.5 * u, ct - 3 * u, 11 * u, 3.5 * u);
+      chimneys.push({ x: cx2, y: ct - 3 * u });
       if (steams < 2 && hash01(seed + bi * 5 + 13) < 0.4) {
         steams++;
         ctx.fillStyle = THEME.paper;
@@ -547,6 +642,53 @@ function drawSkyline(
 
     // row houses touch; an alley now and then shows the layer behind
     bx += bw + (hash01(seed + bi * 3 + 4) < 0.24 ? 18 * u : -1);
+  }
+
+  // string lights — one wire between the first close pair of chimneys.
+  // A bare line by day; at night it's a strand of warm bulbs, the
+  // rooftop version of the whole game's arc: the city lights up as you
+  // climb.
+  {
+    let p0: { x: number; y: number } | null = null;
+    let p1: { x: number; y: number } | null = null;
+    for (let i = 0; i + 1 < chimneys.length; i++) {
+      const dx = chimneys[i + 1].x - chimneys[i].x;
+      if (dx > 50 * u && dx < 200 * u) {
+        p0 = chimneys[i];
+        p1 = chimneys[i + 1];
+        break;
+      }
+    }
+    if (p0 && p1) {
+      const sag = (p1.x - p0.x) * 0.14;
+      const cxm = (p0.x + p1.x) / 2;
+      const cym = (p0.y + p1.y) / 2 + 2 * sag; // quadratic control: mid sags by `sag`
+      ctx.strokeStyle = withAlpha(THEME.outline, "59");
+      ctx.lineWidth = 1.2 * u;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.quadraticCurveTo(cxm, cym, p1.x, p1.y);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      const on = party || night > 0.3;
+      for (let i = 0; i < 7; i++) {
+        const t = 0.2 + i * 0.1;
+        const gx = (1 - t) * (1 - t) * p0.x + 2 * (1 - t) * t * cxm + t * t * p1.x;
+        const gy =
+          (1 - t) * (1 - t) * p0.y + 2 * (1 - t) * t * cym + t * t * p1.y + 2.5 * u;
+        if (on) {
+          // each bulb breathes on its own beat
+          ctx.fillStyle = THEME.lamp;
+          ctx.globalAlpha = lampA * (0.75 + 0.25 * Math.sin(now * 1.9 + i * 2.4));
+        } else {
+          ctx.fillStyle = withAlpha(THEME.outline, "66");
+        }
+        ctx.beginPath();
+        ctx.arc(gx, gy, (on ? 2.2 : 1.6) * u, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
   }
 }
 
