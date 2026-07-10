@@ -2630,31 +2630,16 @@ export function Hoop() {
       ctx.fillText(text, W / 2, y);
     };
     sticker("HOOPING", 104, 200, MUSTARD);
-    // the verdict is the story here too — the miss named in ball-widths,
-    // gold when the run earned gold, shrunk until it fits the poster
-    const verdict = beat
-      ? `ALL ${LEVELS.length} LEVELS, ONE BALL`
-      : (missLine ?? (last ? autopsy(last) : `LEVEL ${levelIdx + 1}`)).toUpperCase();
-    let vSize = 76;
-    ctx.font = `700 ${vSize}px ${DISPLAY}`;
-    while (vSize > 44 && ctx.measureText(verdict).width > W - 120) {
-      vSize -= 4;
-      ctx.font = `700 ${vSize}px ${DISPLAY}`;
-    }
-    sticker(
-      verdict,
-      vSize,
-      330,
-      beat || last?.closestYet || frontier ? YELLOW : PAPER,
-    );
 
-    // the run, replayed in pips — the poster's wordle grid. Makes in
-    // mustard, the ✗ where it died, the pennant over the best. Empty
-    // pips wear the stat ink so they survive every sky.
+    // the run, replayed in pips — the poster's hero and its whole
+    // scoreboard. Makes in mustard, the ✗ where it died, the pennant
+    // over the best. A stranger reads it without a legend; that's the
+    // wordle trick. Empty pips wear the stat ink so they survive
+    // every sky.
     const ink = night > 0.5 ? PAPER : OUTLINE;
-    const pipY = 405;
-    const pipR = 20;
-    const step = 66;
+    const pipY = 340;
+    const pipR = 28;
+    const step = 92;
     const pipX0 = W / 2 - ((LEVELS.length - 1) * step) / 2;
     LEVELS.forEach((_, i) => {
       const x = pipX0 + i * step;
@@ -2664,31 +2649,31 @@ export function Hoop() {
         ctx.fillStyle = MUSTARD;
         ctx.fill();
         ctx.strokeStyle = OUTLINE;
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 6;
         ctx.stroke();
       } else if (!beat && i === levelIdx) {
         ctx.strokeStyle = THEME.rim;
-        ctx.lineWidth = 9;
+        ctx.lineWidth = 11;
         ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.moveTo(x - 15, pipY - 15);
-        ctx.lineTo(x + 15, pipY + 15);
-        ctx.moveTo(x + 15, pipY - 15);
-        ctx.lineTo(x - 15, pipY + 15);
+        ctx.moveTo(x - 20, pipY - 20);
+        ctx.lineTo(x + 20, pipY + 20);
+        ctx.moveTo(x + 20, pipY - 20);
+        ctx.lineTo(x - 20, pipY + 20);
         ctx.stroke();
       } else {
         ctx.beginPath();
         ctx.arc(x, pipY, pipR, 0, Math.PI * 2);
         ctx.strokeStyle = withAlpha(ink, "66");
-        ctx.lineWidth = 5;
+        ctx.lineWidth = 6;
         ctx.stroke();
       }
       if (!beat && bestDepth === i + 1) {
-        const fy = pipY - pipR - 34;
+        const fy = pipY - pipR - 44;
         ctx.beginPath();
-        ctx.moveTo(x - 13, fy);
-        ctx.lineTo(x + 13, fy);
-        ctx.lineTo(x, fy + 24);
+        ctx.moveTo(x - 16, fy);
+        ctx.lineTo(x + 16, fy);
+        ctx.lineTo(x, fy + 28);
         ctx.closePath();
         ctx.fillStyle = YELLOW;
         ctx.fill();
@@ -2698,23 +2683,26 @@ export function Hoop() {
       }
     });
 
-    // the stat lines, mono like the panel — ink by day, paper by night;
-    // this run's deposits ride the career line in gold, pulled down by
-    // day so it reads as text
-    ctx.font = `600 42px ui-monospace, Menlo, monospace`;
-    ctx.fillStyle = ink;
-    ctx.fillText(`GAME ${run} · BEST ${bestDepth}/${LEVELS.length}`, W / 2, 478);
-    const careerBase = `${buckets} CAREER ${buckets === 1 ? "BUCKET" : "BUCKETS"}`;
-    const plus = runMakes > 0 ? ` +${runMakes}` : "";
-    const wBase = ctx.measureText(careerBase).width;
-    const cx0 = W / 2 - (wBase + ctx.measureText(plus).width) / 2;
-    ctx.textAlign = "left";
-    ctx.fillText(careerBase, cx0, 538);
-    if (plus) {
-      ctx.fillStyle = night > 0.5 ? YELLOW : "#cf8f0e";
-      ctx.fillText(plus, cx0 + wBase, 538);
+    // the one line of text — the career best, same wording as the top
+    // bar, gold when the run earned gold. No stats dashboard; the pips
+    // already told the story.
+    const verdict = beat
+      ? `ALL ${LEVELS.length} LEVELS, ONE BALL`
+      : bestDepth > 0
+        ? `BEST ${bestDepth}/${LEVELS.length} CLEARED`
+        : `LEVEL ${levelIdx + 1}`;
+    let vSize = 56;
+    ctx.font = `700 ${vSize}px ${DISPLAY}`;
+    while (vSize > 36 && ctx.measureText(verdict).width > W - 160) {
+      vSize -= 4;
+      ctx.font = `700 ${vSize}px ${DISPLAY}`;
     }
-    ctx.textAlign = "center";
+    sticker(
+      verdict,
+      vSize,
+      480,
+      beat || last?.closestYet || frontier ? YELLOW : PAPER,
+    );
 
     // the ground — grass with the asphalt cap, same seams as the game
     ctx.fillStyle = THEME.grass;
@@ -2782,13 +2770,6 @@ export function Hoop() {
   // clipboard, or downloads it when the clipboard won't take images.
   const shareRun = async () => {
     const beat = phase === "beat";
-    const made = beat ? LEVELS.length : levelIdx;
-    const trail = "🏀".repeat(made) + (beat ? "" : "✗");
-    // one dry line rides along as the caption — the card carries the
-    // stats, the text carries the tappable link and the level's name
-    const text = beat
-      ? `${trail} all ${LEVELS.length} levels, one ball. hooping.io`
-      : `${trail} out on level ${levelIdx + 1} (${LEVELS[levelIdx].name}). hooping.io`;
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
       // share() rejects when the user dismisses the sheet — that's a
       // no-op, not a fallback
@@ -2797,9 +2778,11 @@ export function Hoop() {
           type: "image/png",
         });
         if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], text });
+          // the card alone — it carries the pips and the URL; a caption
+          // would just be someone's app talking over it
+          await navigator.share({ files: [file] });
         } else {
-          await navigator.share({ text }); // no file sharing — old move
+          await navigator.share({ text: "hooping.io" }); // no file sharing — old move
         }
       } catch {
         // sheet dismissed
