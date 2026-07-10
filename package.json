@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test": "node --experimental-strip-types --test lib/*.test.ts",
     "hoopsim": "node --experimental-strip-types scripts/hoopsim.mjs",
-    "gauntlet": "node --experimental-strip-types scripts/gauntlet.mjs"
+    "gauntlet": "node --experimental-strip-types scripts/gauntlet.mjs",
+    "proof": "node --experimental-strip-types scripts/render-proof.mjs"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
@@ -25,6 +26,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
+    "node-web-audio-api": "^2.0.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

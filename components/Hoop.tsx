@@ -1420,7 +1420,7 @@ export function Hoop() {
   const seenTouchesRef = useRef(0);
   const lastRimAtRef = useRef(-Infinity); // panic window
   const madeRef = useRef(false);
-  const bestDepthRef = useRef(0); // gates the new-deepest fanfare
+  const bestDepthRef = useRef(0); // gates the new-deepest ceremony
   const bucketsRef = useRef(0); // career makes — the meter that only climbs
   const eventAtRef = useRef(-Infinity); // joy hop clock
   const leanAtRef = useRef(-Infinity); // rim-approach slow-mo clock
@@ -1551,9 +1551,9 @@ export function Hoop() {
     const ph = phaseRef.current;
     if (ph === "cleared") {
       const ni = levelIdxRef.current + 1;
-      // the next round announces itself — an arpeggio rooted by the
-      // level just cleared, timed to the enter card's slam
-      sound.levelUp(ni);
+      // the cleared level takes its bow — that level's phrase from the
+      // transcription, timed to the enter card's slam
+      sound.levelClear(ni);
       levelIdxRef.current = ni;
       setLevelIdx(ni);
     } else if (ph === "dead" || ph === "beat") {
@@ -1672,8 +1672,10 @@ export function Hoop() {
       // flyovers re-fly once in slow motion BEFORE the death card takes
       // the stage — broadcast order, never behind the modal. A press
       // cuts straight to the card; bricks skip the ceremony entirely.
+      // ...but only once the run has stakes — deaths on levels 1-2 cut
+      // straight to the card
       const aim = lastAimRef.current;
-      if (aim && (rims > 0 || s.missBy <= 2 * BALL_R)) {
+      if (aim && levelIdxRef.current >= 2 && (rims > 0 || s.missBy <= 2 * BALL_R)) {
         replaySpecRef.current = {
           level: LEVELS[levelIdxRef.current],
           p: aim.p,
@@ -1685,7 +1687,13 @@ export function Hoop() {
       }
       // any miss breaks the level's clean-make streak
       swishStreakRef.current[levelIdxRef.current] = 0;
-      sound.plunk(); // the run dies with a low dead thud
+      // the death — grief scales with stakes, same threshold as the
+      // replay: shallow deaths (levels 1-2) get the dry brick, built
+      // to survive 900 straight plays; past that, touched iron gets
+      // the rim-out and everything else the Dorian heartbreaker
+      if (levelIdxRef.current < 2) sound.brick();
+      else if (rims > 0) sound.rimOut();
+      else sound.heartbreaker();
       navigator.vibrate?.(60);
       eventAtRef.current = performance.now() / 1000;
       setPracticed(false); // a fresh death card carries a fresh gym pass
@@ -2504,8 +2512,10 @@ export function Hoop() {
       const dt = Math.min(now - lastT, 0.05);
       lastT = now;
 
-      // the intro card hands off to aim on its own — no press needed
-      if (phaseRef.current === "enter" && now - phaseAtRef.current > 0.5) {
+      // the intro card hands off to aim on its own — no press needed.
+      // 1.5s: two lines take two reads — "LEVEL 4 — MATCH POINT" plus
+      // its sub — and a press still skips straight to aiming
+      if (phaseRef.current === "enter" && now - phaseAtRef.current > 1.5) {
         setPhaseBoth("aim");
       }
       // a make rolls into the next level on its own — keep the momentum.
@@ -2605,7 +2615,9 @@ export function Hoop() {
           eventAtRef.current = now;
           kickAtRef.current = now;
           const depth = levelIdxRef.current + 1;
-          sound.swish(depth); // deeper buckets ring higher
+          // every make — clean, banked, rattled in — gets the same
+          // subtle climb home
+          sound.swish();
           navigator.vibrate?.([20, 30, 40]);
           // a practice make deposits nothing — no pennant, no bucket,
           // no streak. The pop names the actual prize: this exact
@@ -2645,17 +2657,17 @@ export function Hoop() {
             if (depth > bestDepthRef.current) {
               bestDepthRef.current = depth;
               newBestRef.current = true;
-              if (!isWin) sound.fanfare(); // deeper than ever before
             }
             if (isWin) {
               winsRef.current += 1;
-              sound.finale(); // the flagpole — outranks every other jingle
+              // the anthem — the b7 every rim-out abandoned, resolved
+              // at last. Perfect runs only, nowhere else, ever.
+              sound.anthem();
             }
             // the career meter — every make anywhere deposits one, so even a
             // run that dies on level 2 paid into something permanent
             bucketsRef.current += 1;
             const milestone = isBucketMilestone(bucketsRef.current);
-            if (milestone && !newBestRef.current && !isWin) sound.fanfare();
             // name the shot
             const walled = s.touches.some((t) => t.kind === "wall");
             const banked = s.touches.some((t) => t.kind === "board");
