@@ -143,6 +143,13 @@ export interface ShotState {
   made: boolean;
   madeAt: number;
   done: boolean;
+  /** how close the flight came to a bucket, in meters — the ball
+   * center's distance from the mouth's heart less the half-band a make
+   * forgives. 0 for makes; a rim-out is ≤ ~0.13. Sampled until the
+   * first floor touch: after that it's a bounce, not a shot. */
+  missBy: number;
+  /** which side of the iron the closest moment sat on */
+  missSide: "short" | "long";
 }
 
 export interface Shooter {
@@ -167,6 +174,8 @@ export function createShot(
     made: false,
     madeAt: 0,
     done: false,
+    missBy: Infinity,
+    missSide: "short",
   };
 
   const rimPts: Vec[] = [
@@ -174,6 +183,8 @@ export function createShot(
     { x: level.rim.x + RIM_GAP, y: level.rim.y },
   ];
   const boardX = level.rim.x + RIM_GAP + BOARD_OFF;
+  const mouthX = level.rim.x + RIM_GAP / 2;
+  let grounded = false; // first floor touch ends the missBy sampling
 
   function touch(kind: TouchKind, speed: number) {
     state.touches.push({ x: state.x, y: state.y, kind, speed, t: state.t });
@@ -240,6 +251,20 @@ export function createShot(
     s.y += s.vy * DT;
     s.t += DT;
 
+    // the miss, measured — a make crosses the band so its distance
+    // bottoms out at 0; everything else records its closest brush with
+    // the bucket. Descending samples only: a shooter judges the miss by
+    // where the ball came DOWN, so a flyover reads long, not the
+    // coin-flip side of wherever it skimmed the rim top. This is the
+    // death card's autopsy line.
+    if (!s.made && !grounded && s.vy < 0) {
+      const d = Math.hypot(s.x - mouthX, s.y - level.rim.y) - RIM_GAP / 2;
+      if (d < s.missBy) {
+        s.missBy = Math.max(0, d);
+        s.missSide = s.x < mouthX ? "short" : "long";
+      }
+    }
+
     // score: falling through the mouth. Checked before collisions so a
     // graze on the way through still counts ("in off the rim").
     if (!s.made && s.vy < 0 && prevY > level.rim.y && s.y <= level.rim.y) {
@@ -275,6 +300,7 @@ export function createShot(
 
     // floor
     if (s.y - BALL_R < 0 && s.vy < 0) {
+      grounded = true;
       const vin = -s.vy;
       s.y = BALL_R;
       if (vin < SETTLE_SPEED) {
@@ -314,6 +340,8 @@ export interface ShotResult {
   touches: Touch[];
   madeAt: number;
   t: number;
+  missBy: number;
+  missSide: "short" | "long";
 }
 
 /** Run a shot to completion — tests, tuning, solvability scans. */
@@ -325,5 +353,12 @@ export function simulateShot(
   const sh = createShot(level, speedMps, angleDeg);
   while (!sh.state.done) sh.step(1);
   const s = sh.state;
-  return { made: s.made, touches: s.touches, madeAt: s.madeAt, t: s.t };
+  return {
+    made: s.made,
+    touches: s.touches,
+    madeAt: s.madeAt,
+    t: s.t,
+    missBy: s.missBy,
+    missSide: s.missSide,
+  };
 }

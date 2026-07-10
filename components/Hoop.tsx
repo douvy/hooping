@@ -23,7 +23,7 @@ import {
   type Shooter,
   type Touch,
 } from "@/lib/hoop";
-import { isBucketMilestone, parseRun, type RunState } from "@/lib/run";
+import { describeMiss, isBucketMilestone, parseRun, type RunState } from "@/lib/run";
 import { createSpring } from "@/lib/spring";
 import * as sound from "@/lib/sound";
 import { SKIES, THEME, darken, withAlpha } from "@/lib/theme";
@@ -199,6 +199,10 @@ type Pose = "aim" | "watch" | "panic" | "joy" | "triumph" | "rest";
 interface LastShot {
   made: boolean;
   touches: Touch[];
+  missBy: number;
+  missSide: "short" | "long";
+  /** this miss beat the level's stored record (and a record existed) */
+  closestYet: boolean;
 }
 
 // --- the run, persisted ---
@@ -274,6 +278,9 @@ export function Hoop() {
   const waveAtRef = useRef(-Infinity); // regrind make: the level's old flag waves back
   const waveIdxRef = useRef(-1);
   const powerNotchRef = useRef(0); // last power-bar notch ticked — the detent gate
+  // per-level closest miss in meters, persisted — the record you can
+  // break while losing. Feeds the death card's "your closest yet".
+  const closestRef = useRef<(number | null)[]>([]);
 
   // HUD state
   const [phase, setPhase] = useState<Phase>("aim");
@@ -296,6 +303,7 @@ export function Hoop() {
       bestDepthRef.current = s.bestDepth;
       bucketsRef.current = s.buckets;
       winsRef.current = s.wins;
+      closestRef.current = [...s.closest];
       ropeBaseRef.current = s.bestDepth + s.wins; // veterans hang settled
       runRef.current = s.run;
       setRunState(s);
@@ -363,7 +371,31 @@ export function Hoop() {
 
   const finishShot = useCallback(() => {
     const s = shotRef.current!.state;
-    setLast({ made: s.made, touches: [...s.touches] });
+    // the record you can break while losing: a miss closer than every
+    // previous miss on this level. Only counts as news when a record
+    // existed — the first miss anywhere is just a data point.
+    const li = levelIdxRef.current;
+    const prevClosest = closestRef.current[li];
+    const closer = !s.made && s.missBy < (prevClosest ?? Infinity);
+    if (closer) {
+      closestRef.current[li] = s.missBy;
+      setRunState((prev) => {
+        if (!prev) return prev;
+        const closest = [...prev.closest];
+        while (closest.length < li) closest.push(null);
+        closest[li] = s.missBy;
+        const next = { ...prev, closest };
+        saveRun(next);
+        return next;
+      });
+    }
+    setLast({
+      made: s.made,
+      touches: [...s.touches],
+      missBy: s.missBy,
+      missSide: s.missSide,
+      closestYet: closer && prevClosest != null,
+    });
     if (s.made) {
       const depth = levelIdxRef.current + 1;
       setRunState((prev) => {
@@ -2518,6 +2550,9 @@ export function Hoop() {
   const wins = runState?.wins ?? 0;
   // what the miss cost you — no tease when you die on the last rung
   const nextLevel = levelIdx + 1 < LEVELS.length ? LEVELS[levelIdx + 1] : null;
+  // the autopsy — a near miss named in ball-widths; bricks stay unnamed
+  const missLine =
+    last && !last.made ? describeMiss(last.missBy, last.missSide) : null;
 
   // the share card — not a DOM screenshot but the world repainted as a
   // poster: the sky the run ended under, the verdict, the career line,
@@ -2759,6 +2794,21 @@ export function Hoop() {
                   <h2 className="font-display text-3xl font-bold text-accent-negative">
                     Game Over
                   </h2>
+                  {/* the autopsy — proof the make exists in your hands.
+                      "closest yet" is the record you set while losing;
+                      it wears the same gold as the near-best line. */}
+                  {missLine && (
+                    <p
+                      className={
+                        last?.closestYet
+                          ? "text-xs font-bold text-warning"
+                          : "text-xs text-muted"
+                      }
+                    >
+                      {missLine}
+                      {last?.closestYet ? " — your closest yet" : ""}
+                    </p>
+                  )}
                   {bestDepth > 0 && (
                     <p className="text-xs text-muted">
                       best: level {bestDepth} cleared

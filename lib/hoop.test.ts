@@ -80,6 +80,58 @@ test("every shot on every level terminates", () => {
   }
 });
 
+test("missBy: every make bottoms out at zero", () => {
+  for (const lv of LEVELS) {
+    for (const r of sweep(lv).filter((r) => r.made)) {
+      assert.strictEqual(r.missBy, 0, `level ${lv.id}: make with missBy ${r.missBy}`);
+    }
+  }
+});
+
+test("missBy: the typical rim-out certifies as a near miss — the agony is real", () => {
+  // geometry: a ball dancing on the mouth keeps its center within
+  // BALL_R + RIM_TUBE of a rim point, so missBy ≤ ~0.13m. The sweep's
+  // tails hold violent ascending ricochets that come down far away —
+  // those SHOULD read far — so the invariant is the median rattle. If
+  // this breaks, the death card calls ordinary rattles bricks.
+  for (const lv of LEVELS) {
+    const ds = sweep(lv)
+      .filter((r) => {
+        if (r.made) return false;
+        const floorAt = r.touches.find((t) => t.kind === "floor")?.t ?? Infinity;
+        return r.touches.some((t) => t.kind === "rim" && t.t < floorAt);
+      })
+      .map((r) => r.missBy)
+      .sort((a, b) => a - b);
+    assert.ok(ds.length > 0, `level ${lv.id}: no rim-outs in the sweep`);
+    const median = ds[Math.floor(ds.length / 2)];
+    assert.ok(median <= 0.14, `level ${lv.id}: median rim-out missBy ${median}`);
+  }
+});
+
+test("missBy: shrinks as the shot gets closer to the answer", () => {
+  // level 3 (deep), fixed angle — walk power toward the make band and
+  // the recorded miss distance must walk toward zero with it
+  const lv = LEVELS[2];
+  const far = simulateShot(lv, 7.5, 57);
+  const near = simulateShot(lv, 8.8, 57);
+  assert.ok(!far.made && !near.made, "calibration shots must both miss");
+  assert.ok(
+    near.missBy < far.missBy,
+    `closer shot measured farther: ${near.missBy} vs ${far.missBy}`,
+  );
+});
+
+test("missBy: sides read correctly — under is short, over is long", () => {
+  // boardless court so an overshoot sails long instead of banking back
+  const open: Level = { ...LEVELS[1], board: false };
+  const under = simulateShot(open, 7.0, 59);
+  const over = simulateShot(open, 11.0, 59);
+  assert.ok(!under.made && !over.made);
+  assert.strictEqual(under.missSide, "short");
+  assert.strictEqual(over.missSide, "long");
+});
+
 test("a ball landing on a ledge dies fast — no 12s waits", () => {
   // lob onto a horizontal ledge: the bounces decay, and the slow last
   // touch must kill the shot instead of letting it rest until the clock
