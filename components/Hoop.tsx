@@ -1330,14 +1330,17 @@ export function Hoop() {
           if (depth > bestDepthRef.current) {
             bestDepthRef.current = depth;
             newBestRef.current = true;
-            sound.fanfare(); // deeper than ever before
+            if (!isWin) sound.fanfare(); // deeper than ever before
           }
-          if (isWin) winsRef.current += 1;
+          if (isWin) {
+            winsRef.current += 1;
+            sound.finale(); // the flagpole — outranks every other jingle
+          }
           // the career meter — every make anywhere deposits one, so even a
           // run that dies on level 2 paid into something permanent
           bucketsRef.current += 1;
           const milestone = isBucketMilestone(bucketsRef.current);
-          if (milestone && !newBestRef.current) sound.fanfare();
+          if (milestone && !newBestRef.current && !isWin) sound.fanfare();
           // name the shot
           const walled = s.touches.some((t) => t.kind === "wall");
           const banked = s.touches.some((t) => t.kind === "board");

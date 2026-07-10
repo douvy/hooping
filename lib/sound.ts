@@ -214,6 +214,66 @@ export function levelUp(depth = 1) {
   blip(f0 * 2.9966, 0.2, 0.2, 0.01, undefined, "sine");
 }
 
+/** Clearing level 6 — the flagpole finale. Three two-octave triad
+ * sweeps, roots stepping Em → G → A, each hanging briefly on its top
+ * note (E5, G5, A5); the last hang IS the landing — a held A5 over a
+ * warm A-major pad and a low A, two seconds to breathe out. Trey runs
+ * the ladder; the band hits the chord. */
+export function finale() {
+  const c = ensure();
+  const t0 = c.currentTime + 0.12; // let the swish's net snap read first
+  // one triangle voice with a real hold — blip's envelope is too
+  // percussive for the pad and the hangs
+  const note = (
+    freq: number,
+    at: number,
+    dur: number,
+    peak: number,
+    attack = 0.006,
+  ) => {
+    const t = t0 + at;
+    const osc = c.createOscillator();
+    const g = c.createGain();
+    osc.type = "triangle";
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(peak, t + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g).connect(master!);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  };
+  // ~150 BPM: the level-up arpeggio walks in ~0.1s steps; the sweeps
+  // run at half that
+  const STEP = 0.05;
+  const HOLD = 0.18; // the brief hang on each sweep's top note
+  const SWEEPS = [
+    [164.81, 196.0, 246.94, 329.63, 392.0, 493.88, 659.26], // Em → E5
+    [196.0, 246.94, 293.66, 392.0, 493.88, 587.33, 784.0], // G  → G5
+    [220.0, 277.18, 329.63, 440.0, 554.37, 659.26, 880.0], // A  → A5
+  ];
+  const sweepLen = (SWEEPS[0].length - 1) * STEP + HOLD;
+  SWEEPS.forEach((notes, s) => {
+    const at0 = s * sweepLen;
+    const vol = 0.026 + s * 0.006; // slight crescendo per sweep
+    notes.forEach((f, i) => {
+      if (i < notes.length - 1) {
+        note(f, at0 + i * STEP, STEP * 1.6, vol); // legato overlap
+      } else if (s < SWEEPS.length - 1) {
+        note(f, at0 + i * STEP, HOLD + 0.06, vol * 1.25); // the hang
+      }
+    });
+  });
+  // the landing — the third sweep's A5 held over the band's A major:
+  // triangle pad with a slow warm attack, a low A underneath
+  const land = 2 * sweepLen + (SWEEPS[0].length - 1) * STEP;
+  note(880, land, 2, 0.05); // A5, held
+  note(220, land, 2, 0.02, 0.04); // A3 ┐
+  note(277.18, land, 2, 0.02, 0.04); // C#4 ┤ the pad
+  note(329.63, land, 2, 0.02, 0.04); // E4 ┘
+  note(110, land, 2, 0.04, 0.02); // the low A
+}
+
 /** New personal best today. The only fanfare in the game. */
 export function fanfare() {
   blip(523, 0, 0.07, 0.04);
