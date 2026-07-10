@@ -11,17 +11,39 @@ export interface RunState {
   /** per-level closest miss in meters (index = level - 1); null = never
    * missed there. The record you can break while losing. */
   closest: (number | null)[];
+  /** deepest level cleared today — the record that resets overnight.
+   * A plateaued career best goes quiet; this one is beatable again
+   * every morning. */
+  todayDepth: number;
+  /** the localDay() key todayDepth belongs to */
+  todayDate: string;
 }
 
-const FRESH: RunState = { run: 1, bestDepth: 0, buckets: 0, wins: 0, closest: [] };
+const FRESH: RunState = {
+  run: 1,
+  bestDepth: 0,
+  buckets: 0,
+  wins: 0,
+  closest: [],
+  todayDepth: 0,
+  todayDate: "",
+};
 
-/** Parse a stored run. Old payloads predate buckets/wins; garbage means
- * a fresh player. */
-export function parseRun(raw: string | null): RunState {
-  if (!raw) return FRESH;
+/** The calendar key for today's best — local time, because "today" means
+ * the player's day, not UTC's. */
+export function localDay(d = new Date()): string {
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+}
+
+/** Parse a stored run. Old payloads predate buckets/wins/today; garbage
+ * means a fresh player. `today` rolls the daily record: a stored depth
+ * from any other day resets to 0. */
+export function parseRun(raw: string | null, today: string): RunState {
+  if (!raw) return { ...FRESH, todayDate: today };
   try {
     const s = JSON.parse(raw) as Partial<RunState>;
-    if (typeof s.run !== "number" || s.run < 1) return FRESH;
+    if (typeof s.run !== "number" || s.run < 1)
+      return { ...FRESH, todayDate: today };
     const bestDepth = s.bestDepth ?? 0;
     return {
       run: s.run,
@@ -34,9 +56,14 @@ export function parseRun(raw: string | null): RunState {
       closest: Array.isArray(s.closest)
         ? s.closest.map((v) => (typeof v === "number" ? v : null))
         : [],
+      todayDepth:
+        s.todayDate === today && typeof s.todayDepth === "number"
+          ? s.todayDepth
+          : 0,
+      todayDate: today,
     };
   } catch {
-    return FRESH;
+    return { ...FRESH, todayDate: today };
   }
 }
 
@@ -53,9 +80,25 @@ function backfillBuckets(run: number, bestDepth: number): number {
   );
 }
 
-/** Career-bucket milestones: sparse early rungs, then every thousand. */
+/** Career-bucket milestones. Dense where players actually live: 10 and
+ * 25 land in a first session, every 50 through 500 keeps the ~1.5
+ * makes-per-game grind inside ~30 games of the next rung, then the
+ * rungs space out. */
 export function isBucketMilestone(n: number): boolean {
-  return [50, 100, 250, 500].includes(n) || (n >= 1000 && n % 1000 === 0);
+  if (n === 10 || n === 25) return true;
+  if (n <= 0) return false;
+  if (n <= 500) return n % 50 === 0;
+  if (n <= 1000) return n % 250 === 0;
+  return n % 1000 === 0;
+}
+
+/** The next rung up — feeds the death card's "12 TO 150" countdown. */
+export function nextBucketMilestone(n: number): number {
+  if (n < 10) return 10;
+  if (n < 25) return 25;
+  if (n < 500) return (Math.floor(n / 50) + 1) * 50;
+  if (n < 1000) return (Math.floor(n / 250) + 1) * 250;
+  return (Math.floor(n / 1000) + 1) * 1000;
 }
 
 /** The gesture hint ("drag back anywhere") shows on level 1 to anyone

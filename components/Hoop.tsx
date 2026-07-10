@@ -27,6 +27,8 @@ import {
 import {
   describeMiss,
   isBucketMilestone,
+  localDay,
+  nextBucketMilestone,
   parseRun,
   showGestureHint,
   type RunState,
@@ -790,9 +792,9 @@ const MUTE_KEY = "hoop-muted-v1";
 
 function loadRun(): RunState {
   try {
-    return parseRun(localStorage.getItem(RUN_KEY));
+    return parseRun(localStorage.getItem(RUN_KEY), localDay());
   } catch {
-    return parseRun(null); // storage blocked — fresh player
+    return parseRun(null, localDay()); // storage blocked — fresh player
   }
 }
 
@@ -863,6 +865,21 @@ export function Hoop() {
   // practicing. Three per death, one session per card, a make ends it
   // early: enough to read the shot, not enough to groove it for free.
   const practiceRef = useRef(0);
+  // deepest level cleared today — the record that resets overnight. A
+  // career best plateaus; this one is beatable again every session.
+  const todayBestRef = useRef(0);
+  const matchedRef = useRef(false); // this make re-reached the career best today
+  // the near-miss death replay: the fatal aim, re-flown in slow motion
+  // behind the death card. Deterministic physics makes the replay free —
+  // it's just the same pull run again.
+  const replaySpecRef = useRef<{ level: Level; p: number; a: number } | null>(null);
+  const replayRef = useRef<Shooter | null>(null);
+  const replayAtRef = useRef(0); // when the current/next pass starts
+  const replayRotRef = useRef(0); // the ghost's own spin — the dead ball must not turn
+  // true while the replay owns the screen: the death card waits for the
+  // first pass to finish (or a press to cut it), then the loop continues
+  // behind the card
+  const replayingRef = useRef(false);
 
   // HUD state
   const [phase, setPhase] = useState<Phase>("aim");
@@ -873,6 +890,7 @@ export function Hoop() {
   const [copied, setCopied] = useState(false);
   const [practiceLeft, setPracticeLeft] = useState(0);
   const [practiced, setPracticed] = useState(false); // this death's session, spent
+  const [replaying, setReplaying] = useState(false); // gates the death card's entrance
 
   const setPhaseBoth = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -885,6 +903,7 @@ export function Hoop() {
     const t = setTimeout(() => {
       const s = loadRun();
       bestDepthRef.current = s.bestDepth;
+      todayBestRef.current = s.todayDepth;
       bucketsRef.current = s.buckets;
       winsRef.current = s.wins;
       closestRef.current = [...s.closest];
@@ -909,8 +928,13 @@ export function Hoop() {
     lastRimAtRef.current = -Infinity;
     madeRef.current = false;
     newBestRef.current = false;
+    matchedRef.current = false;
     leanAtRef.current = -Infinity;
     inMouthRef.current = false;
+    replaySpecRef.current = null;
+    replayRef.current = null;
+    replayingRef.current = false;
+    setReplaying(false);
   };
 
   const shoot = useCallback(
@@ -1017,6 +1041,7 @@ export function Hoop() {
           bestDepth: Math.max(prev.bestDepth, depth),
           buckets: bucketsRef.current,
           wins: winsRef.current,
+          todayDepth: Math.max(prev.todayDepth, depth),
         };
         saveRun(next);
         return next;
@@ -1047,6 +1072,21 @@ export function Hoop() {
           color: THEME.ball,
         };
       }
+      // heartbreakers earn a replay: iron touches and within-a-ball
+      // flyovers re-fly once in slow motion BEFORE the death card takes
+      // the stage — broadcast order, never behind the modal. A press
+      // cuts straight to the card; bricks skip the ceremony entirely.
+      const aim = lastAimRef.current;
+      if (aim && (rims > 0 || s.missBy <= 2 * BALL_R)) {
+        replaySpecRef.current = {
+          level: LEVELS[levelIdxRef.current],
+          p: aim.p,
+          a: aim.a,
+        };
+        replayAtRef.current = performance.now() / 1000 + 0.5;
+        replayingRef.current = true;
+        setReplaying(true);
+      }
       // any miss breaks the level's clean-make streak
       swishStreakRef.current[levelIdxRef.current] = 0;
       sound.plunk(); // the run dies with a low dead thud
@@ -1056,6 +1096,15 @@ export function Hoop() {
       setPhaseBoth("dead");
     }
   }, [setPhaseBoth]);
+
+  // the replay hands the stage to the death card — either the pass
+  // finished at the floor, or a press cut it short
+  const endReplay = useCallback(() => {
+    replayingRef.current = false;
+    replaySpecRef.current = null;
+    replayRef.current = null;
+    setReplaying(false);
+  }, []);
 
   // the death card's gym pass: three balls on the level that killed
   // you. Practice finds the answer, the ghost arrow remembers it, the
@@ -1935,6 +1984,12 @@ export function Hoop() {
           if (practice) {
             popRef.current = { text: "THAT'S THE ONE", at: now, color: YELLOW };
           } else {
+            // today's ledger — deeper than any make today. Re-reaching the
+            // career best is the plateaued player's session summit; the
+            // cleared card golds it, once a day by construction.
+            const todayFirst = depth > todayBestRef.current;
+            if (todayFirst) todayBestRef.current = depth;
+            matchedRef.current = todayFirst && depth === bestDepthRef.current;
             if (depth > bestDepthRef.current || isWin) {
               ropeBaseRef.current = bestDepthRef.current + winsRef.current;
               hoistAtRef.current = now;
@@ -2029,6 +2084,28 @@ export function Hoop() {
           }
         }
         if (s.done) finishShot();
+      }
+
+      // the death replay — one slow-motion pass of the fatal shot, played
+      // to a card-free screen. It ends at the floor (flight only, the
+      // story without the epilogue) and hands the stage to the verdict.
+      if (phaseRef.current === "dead" && replaySpecRef.current && now > replayAtRef.current) {
+        const spec = replaySpecRef.current;
+        let rp = replayRef.current;
+        if (!rp) {
+          rp = replayRef.current = createShot(spec.level, spec.p, spec.a);
+          trailRef.current = [];
+          replayRotRef.current = 0;
+        }
+        const rs = rp.state;
+        if (!rs.done && !rs.touches.some((t) => t.kind === "floor")) {
+          rp.step(dt * 0.45);
+          replayRotRef.current += (Math.abs(rs.vx) + 2) * dt * 0.45 * 1.6;
+          trailRef.current.push({ x: rs.x, y: rs.y });
+          if (trailRef.current.length > 70) trailRef.current.shift();
+        } else {
+          endReplay();
+        }
       }
 
       // --- draw ---
@@ -2653,6 +2730,27 @@ export function Hoop() {
         // the dead ball lies where it stopped
         ballShadow(shot.state.x, Math.max(shot.state.y, BALL_R));
         drawBall(ctx, sx(shot.state.x), sy(Math.max(shot.state.y, BALL_R)), ballR, ballRotRef.current);
+        // the replay ghost re-flies the fatal arc; the broadcast tag keeps
+        // it reading as a memory, not a second chance
+        const rp = replayRef.current;
+        if (rp && !rp.state.done) {
+          ctx.globalAlpha = 0.85;
+          drawBall(ctx, sx(rp.state.x), sy(rp.state.y), ballR, replayRotRef.current);
+          ctx.font = `700 18px ${DISPLAY}`;
+          ctx.textAlign = "center";
+          ctx.lineJoin = "round";
+          ctx.globalAlpha = 0.7 + 0.3 * Math.sin(now * 5); // the broadcast blink
+          ctx.strokeStyle = OUTLINE;
+          ctx.lineWidth = 4;
+          ctx.strokeText("REPLAY", W / 2, H * 0.14);
+          ctx.fillStyle = PAPER;
+          ctx.fillText("REPLAY", W / 2, H * 0.14);
+          ctx.globalAlpha = 1;
+          ctx.textAlign = "left";
+          ctx.lineWidth = 1;
+          ctx.lineJoin = "miter";
+          ctx.font = CANVAS_FONT;
+        }
       }
 
       // aiming — ball in his raised hands, the pull, the readout
@@ -3033,9 +3131,13 @@ export function Hoop() {
       if (ph === "cleared") {
         const nx = LEVELS[levelIdxRef.current + 1];
         card(
-          newBestRef.current ? `LEVEL ${level.id} — NEW BEST` : `LEVEL ${level.id} CLEARED`,
+          newBestRef.current
+            ? `LEVEL ${level.id} — NEW BEST`
+            : matchedRef.current
+              ? `LEVEL ${level.id} — TIED YOUR BEST`
+              : `LEVEL ${level.id} CLEARED`,
           `next: level ${nx.id}`,
-          newBestRef.current ? YELLOW : PAPER,
+          newBestRef.current || matchedRef.current ? YELLOW : PAPER,
         );
       } else if (ph === "enter") {
         // level 6 is the last shot; the level past your best is match
@@ -3070,7 +3172,7 @@ export function Hoop() {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [finishShot, setPhaseBoth, advance]);
+  }, [finishShot, setPhaseBoth, advance, endReplay]);
 
   // --- gesture: pull back, release ---
   // A verdict press is consumed by advance() — it never doubles as the start
@@ -3084,7 +3186,9 @@ export function Hoop() {
       // skip the rest of the read instead of eating the drag
       setPhaseBoth("aim");
     } else if (ph !== "aim") {
-      advance(); // cleared → next level, dead/beat → run it back
+      // a press during the death replay cuts to the verdict, not past it
+      if (ph === "dead" && replayingRef.current) endReplay();
+      else advance(); // cleared → next level, dead/beat → run it back
       return;
     }
     if (dragRef.current) return; // one finger owns the aim
@@ -3139,7 +3243,9 @@ export function Hoop() {
       if (ph === "enter") {
         setPhaseBoth("aim"); // the masher's replay must not be eaten
       } else if (ph !== "aim") {
-        advance();
+        // same as a press: mid-replay space cuts to the verdict card
+        if (ph === "dead" && replayingRef.current) endReplay();
+        else advance();
         return;
       }
       const mem = levelAimsRef.current[levelIdxRef.current] ?? lastAimRef.current;
@@ -3147,7 +3253,7 @@ export function Hoop() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [shoot, advance, setPhaseBoth]);
+  }, [shoot, advance, setPhaseBoth, endReplay]);
 
   // --- the miss autopsy ---
   const autopsy = (l: LastShot): string => {
@@ -3181,6 +3287,13 @@ export function Hoop() {
     last && !last.made ? describeMiss(last.missBy, last.missSide) : null;
   // dying at the frontier — one make past this ✗ was a new best
   const frontier = bestDepth > 0 && levelIdx === bestDepth;
+  const todayDepth = runState?.todayDepth ?? 0;
+  // the daily frontier — one make past this ✗ was today's best (or tied
+  // the career mark, the stronger pull). Career frontier outranks it.
+  const todayFrontier =
+    !frontier && todayDepth > 0 && todayDepth < bestDepth && levelIdx === todayDepth;
+  // the next career-bucket rung, for the death card's countdown
+  const nextMile = nextBucketMilestone(buckets);
   // this run's deposits, for the odometer roll and the +N tick
   const runMakes = phase === "beat" ? LEVELS.length : levelIdx;
 
@@ -3371,6 +3484,11 @@ export function Hoop() {
   // clipboard, or downloads it when the clipboard won't take images.
   const shareRun = async () => {
     const beat = phase === "beat";
+    // the funnel's other end — run_end measures play, this measures spread
+    track("share", {
+      beat,
+      coarse: matchMedia("(pointer: coarse)").matches,
+    });
     if (navigator.share && matchMedia("(pointer: coarse)").matches) {
       // share() rejects when the user dismisses the sheet — that's a
       // no-op, not a fallback
@@ -3438,7 +3556,13 @@ export function Hoop() {
           </span>
         </div>
         <div className="flex items-center gap-4 font-mono text-xs text-[#fdfaf2]/70">
-          <span>BEST {bestDepth > 0 ? `${bestDepth}/${LEVELS.length} CLEARED` : "—"}</span>
+          {/* two records: the daily chase next to the career mark. Fresh
+              players get one dash — no scoreboard before the first make. */}
+          <span>
+            {bestDepth > 0
+              ? `TODAY ${todayDepth} · BEST ${bestDepth}/${LEVELS.length}`
+              : "BEST —"}
+          </span>
           <button
             onClick={toggleSound}
             // -m/p: a finger-sized hit area around a 13px icon, no layout shift
@@ -3469,8 +3593,9 @@ export function Hoop() {
 
         {/* the verdict — a real panel, not canvas text. Tap anywhere
             (including the panel) starts the next game; the share button
-            stops the tap from advancing. */}
-        {(phase === "dead" || phase === "beat") && (
+            stops the tap from advancing. On heartbreaker deaths the card
+            waits in the wings while the replay plays — broadcast order. */}
+        {(phase === "beat" || (phase === "dead" && !replaying)) && (
           <div
             className={`absolute inset-0 z-10 flex touch-none items-center justify-center animate-[fade-in_0.2s_ease-out_0.1s_both] ${
               // death dims the world in ink; victory keeps it bright under
@@ -3556,6 +3681,13 @@ export function Hoop() {
                   {frontier && (
                     <p className="text-xs font-bold text-warning">
                       one make from a new best
+                    </p>
+                  )}
+                  {todayFrontier && (
+                    <p className="text-xs font-bold text-warning">
+                      {levelIdx + 1 === bestDepth
+                        ? "one make ties your best"
+                        : "one make from today's best"}
                     </p>
                   )}
                   {/* the retry is the reward — the next court rides the
@@ -3648,6 +3780,9 @@ export function Hoop() {
                     +{runMakes}
                   </span>
                 )}
+                {/* the next rung, always in sight — a counter that only
+                    climbs deserves a visible finish line */}
+                {buckets > 0 && <> · {nextMile - buckets} TO {nextMile}</>}
               </p>
               {/* share is the primary verb only on a win — a death
                   screen's verb is retry, so there it goes ghost. min-w
