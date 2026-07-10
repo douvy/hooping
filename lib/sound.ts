@@ -158,6 +158,13 @@ type NoteOpts = {
   cutoff?: number;
 };
 
+// The melodic engine's one volume knob. Phrases were scored at vols
+// that towered over the game's impact voice (ticks 0.032, clanks
+// ≤0.05) — field report: level-clear and death phrases way too loud
+// on phones. 0.4 sits their peaks beside the impacts instead of over
+// them; relative note dynamics inside every phrase are untouched.
+const PHRASE_LEVEL = 0.4;
+
 /** The voice. Square (triangle where marked) through a fixed lowpass;
  * 7ms attack, flat sustain to 62% of duration, linear ramp to
  * silence. A detuned double (+2-4 cents, rolled per note) rides at
@@ -173,7 +180,7 @@ function note(
   const c = ensure();
   const t = c.currentTime + Math.max(0, at + rnd(-0.012, 0.012));
   dur *= rnd(0.93, 1.07);
-  vol *= rnd(0.88, 1.12);
+  vol *= PHRASE_LEVEL * rnd(0.88, 1.12);
   const g = c.createGain();
   g.gain.setValueAtTime(0, t);
   g.gain.linearRampToValueAtTime(vol, t + 0.007);
@@ -253,8 +260,8 @@ const E5 = 659.26;
  * consecutive plays; the deeper griefs stay rare because deep deaths
  * are rare. */
 export function brick() {
-  note(B3, 0, 0.09, 0.11);
-  note(B3, 0.105, 0.09, 0.11);
+  note(B3, 0, 0.09, 0.07);
+  note(B3, 0.105, 0.09, 0.07);
 }
 
 /** A burst of filtered noise — nothing synthetic says "nylon". */
@@ -337,10 +344,11 @@ export function swish() {
  * unresolved — half of the game's central musical sentence; only the
  * anthem answers it. */
 export function rimOut() {
-  note(E5, 0, 0.11, 0.15);
-  note(E5, 0.13, 0.09, 0.13);
-  note(CS5, 0.25, 0.14, 0.15);
-  note(D5, 0.41, 0.65, 0.16, {
+  // deaths whisper — they're the most-played phrases in the game
+  note(E5, 0, 0.11, 0.09);
+  note(E5, 0.13, 0.09, 0.08);
+  note(CS5, 0.25, 0.14, 0.09);
+  note(D5, 0.41, 0.65, 0.1, {
     from: CS5,
     slide: 0.14,
     vibrato: true,
@@ -352,11 +360,11 @@ export function rimOut() {
  * slides, no other decoration: B4·D5·C#5·A4 at ~170-190ms spacings,
  * then G4 held 600ms, vibrato from ~200ms. */
 export function heartbreaker() {
-  note(B4, 0, 0.16);
-  note(D5, 0.18, 0.16);
-  note(CS5, 0.355, 0.15);
-  note(A4, 0.545, 0.16);
-  note(G4, 0.72, 0.6, 0.16, {
+  note(B4, 0, 0.16, 0.09);
+  note(D5, 0.18, 0.16, 0.09);
+  note(CS5, 0.355, 0.15, 0.09);
+  note(A4, 0.545, 0.16, 0.09);
+  note(G4, 0.72, 0.6, 0.1, {
     vibrato: true,
     vibratoAt: 0.2,
     vibratoDepth: 0.01, // grief shakes a little wider
