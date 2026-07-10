@@ -2794,6 +2794,48 @@ export function Hoop() {
                   <h2 className="font-display text-3xl font-bold text-accent-negative">
                     Game Over
                   </h2>
+                  {/* the run, replayed — each make stamps in on its own
+                      beat, the ✗ lands last on the level that killed it,
+                      and the record's pennant hangs over the slot it
+                      guards. The gap between ✗ and flag IS the pitch. */}
+                  <div
+                    className="flex justify-center gap-2"
+                    aria-label={`died on level ${levelIdx + 1}${
+                      bestDepth > 0 ? `, best level ${bestDepth}` : ""
+                    }`}
+                  >
+                    {LEVELS.map((_, i) => (
+                      <span
+                        key={i}
+                        aria-hidden
+                        className="flex flex-col items-center gap-[3px] animate-[letter-pop_0.4s_cubic-bezier(0.34,1.56,0.64,1)_both]"
+                        style={{ animationDelay: `${0.35 + i * 0.07}s` }}
+                      >
+                        <svg
+                          viewBox="0 0 8 9"
+                          className={`h-2 w-2 text-warning ${
+                            bestDepth === i + 1 ? "" : "invisible"
+                          }`}
+                        >
+                          <path
+                            d="M0 .5h8L4 8.5Z"
+                            fill="currentColor"
+                            stroke="var(--foreground)"
+                            strokeWidth="1"
+                          />
+                        </svg>
+                        {i < levelIdx ? (
+                          <span className="h-3 w-3 rounded-full border-2 border-foreground bg-[#dfa63f]" />
+                        ) : i === levelIdx ? (
+                          <span className="flex h-3 w-3 items-center justify-center text-[13px] font-bold leading-none text-accent-negative">
+                            ✗
+                          </span>
+                        ) : (
+                          <span className="h-3 w-3 rounded-full border-2 border-border" />
+                        )}
+                      </span>
+                    ))}
+                  </div>
                   {/* the autopsy — proof the make exists in your hands.
                       "closest yet" is the record you set while losing;
                       it wears the same gold as the near-best line. */}
@@ -2807,11 +2849,6 @@ export function Hoop() {
                     >
                       {missLine}
                       {last?.closestYet ? " — your closest yet" : ""}
-                    </p>
-                  )}
-                  {bestDepth > 0 && (
-                    <p className="text-xs text-muted">
-                      best: level {bestDepth} cleared
                     </p>
                   )}
                   {/* the near-miss, named — dying at the frontier is the
