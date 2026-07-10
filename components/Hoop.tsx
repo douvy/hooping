@@ -100,6 +100,33 @@ function MiniCourt({ level }: { level: Level }) {
   );
 }
 
+// The career odometer — holds at the pre-run total while the pips
+// stamp, then rolls this run's deposits in. body has tabular-nums,
+// so the roll doesn't jitter the line.
+function CountUp({ from, to, delayMs }: { from: number; to: number; delayMs: number }) {
+  // initial state is already `to` when there's nothing to roll
+  const [v, setV] = useState(Math.min(from, to));
+  useEffect(() => {
+    if (from >= to) return;
+    let raf = 0;
+    const timer = setTimeout(() => {
+      const t0 = performance.now();
+      const dur = 500;
+      const tick = (now: number) => {
+        const p = Math.min(1, (now - t0) / dur);
+        setV(Math.round(from + (to - from) * (1 - (1 - p) ** 3)));
+        if (p < 1) raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }, delayMs);
+    return () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+    };
+  }, [from, to, delayMs]);
+  return <>{v}</>;
+}
+
 const CANVAS_FONT = "10px ui-monospace, Menlo, monospace";
 
 // how far into night each level is — drives the floodlight, the city's
@@ -2553,6 +2580,10 @@ export function Hoop() {
   // the autopsy — a near miss named in ball-widths; bricks stay unnamed
   const missLine =
     last && !last.made ? describeMiss(last.missBy, last.missSide) : null;
+  // dying at the frontier — one make past this ✗ was a new best
+  const frontier = bestDepth > 0 && levelIdx === bestDepth;
+  // this run's deposits, for the odometer roll and the +N tick
+  const runMakes = phase === "beat" ? LEVELS.length : levelIdx;
 
   // the share card — not a DOM screenshot but the world repainted as a
   // poster: the sky the run ended under, the verdict, the career line,
@@ -2596,18 +2627,91 @@ export function Hoop() {
       ctx.fillText(text, W / 2, y);
     };
     sticker("HOOPING", 104, 200, MUSTARD);
+    // the verdict is the story here too — the miss named in ball-widths,
+    // gold when the run earned gold, shrunk until it fits the poster
+    const verdict = beat
+      ? `ALL ${LEVELS.length} LEVELS, ONE BALL`
+      : (missLine ?? (last ? autopsy(last) : `LEVEL ${levelIdx + 1}`)).toUpperCase();
+    let vSize = 76;
+    ctx.font = `700 ${vSize}px ${DISPLAY}`;
+    while (vSize > 44 && ctx.measureText(verdict).width > W - 120) {
+      vSize -= 4;
+      ctx.font = `700 ${vSize}px ${DISPLAY}`;
+    }
     sticker(
-      beat ? `ALL ${LEVELS.length} LEVELS, ONE BALL` : `LEVEL ${levelIdx + 1}`,
-      76,
+      verdict,
+      vSize,
       330,
-      beat ? YELLOW : PAPER,
+      beat || last?.closestYet || frontier ? YELLOW : PAPER,
     );
 
-    // the stat lines, mono like the panel — ink by day, paper by night
+    // the run, replayed in pips — the poster's wordle grid. Makes in
+    // mustard, the ✗ where it died, the pennant over the best. Empty
+    // pips wear the stat ink so they survive every sky.
+    const ink = night > 0.5 ? PAPER : OUTLINE;
+    const pipY = 405;
+    const pipR = 20;
+    const step = 66;
+    const pipX0 = W / 2 - ((LEVELS.length - 1) * step) / 2;
+    LEVELS.forEach((_, i) => {
+      const x = pipX0 + i * step;
+      if (i < runMakes) {
+        ctx.beginPath();
+        ctx.arc(x, pipY, pipR, 0, Math.PI * 2);
+        ctx.fillStyle = MUSTARD;
+        ctx.fill();
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      } else if (!beat && i === levelIdx) {
+        ctx.strokeStyle = THEME.rim;
+        ctx.lineWidth = 9;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x - 15, pipY - 15);
+        ctx.lineTo(x + 15, pipY + 15);
+        ctx.moveTo(x + 15, pipY - 15);
+        ctx.lineTo(x - 15, pipY + 15);
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, pipY, pipR, 0, Math.PI * 2);
+        ctx.strokeStyle = withAlpha(ink, "66");
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
+      if (!beat && bestDepth === i + 1) {
+        const fy = pipY - pipR - 34;
+        ctx.beginPath();
+        ctx.moveTo(x - 13, fy);
+        ctx.lineTo(x + 13, fy);
+        ctx.lineTo(x, fy + 24);
+        ctx.closePath();
+        ctx.fillStyle = YELLOW;
+        ctx.fill();
+        ctx.strokeStyle = OUTLINE;
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+    });
+
+    // the stat lines, mono like the panel — ink by day, paper by night;
+    // this run's deposits ride the career line in gold, pulled down by
+    // day so it reads as text
     ctx.font = `600 42px ui-monospace, Menlo, monospace`;
-    ctx.fillStyle = night > 0.5 ? PAPER : OUTLINE;
-    ctx.fillText(`GAME ${run} · BEST ${bestDepth}/${LEVELS.length}`, W / 2, 445);
-    ctx.fillText(`${buckets} CAREER ${buckets === 1 ? "BUCKET" : "BUCKETS"}`, W / 2, 510);
+    ctx.fillStyle = ink;
+    ctx.fillText(`GAME ${run} · BEST ${bestDepth}/${LEVELS.length}`, W / 2, 478);
+    const careerBase = `${buckets} CAREER ${buckets === 1 ? "BUCKET" : "BUCKETS"}`;
+    const plus = runMakes > 0 ? ` +${runMakes}` : "";
+    const wBase = ctx.measureText(careerBase).width;
+    const cx0 = W / 2 - (wBase + ctx.measureText(plus).width) / 2;
+    ctx.textAlign = "left";
+    ctx.fillText(careerBase, cx0, 538);
+    if (plus) {
+      ctx.fillStyle = night > 0.5 ? YELLOW : "#cf8f0e";
+      ctx.fillText(plus, cx0 + wBase, 538);
+    }
+    ctx.textAlign = "center";
 
     // the ground — grass with the asphalt cap, same seams as the game
     ctx.fillStyle = THEME.grass;
@@ -2788,18 +2892,29 @@ export function Hoop() {
             }`}
             onPointerDown={advance}
           >
-            <div className="flex w-80 max-w-[88%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-8 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both]">
+            <div className="flex w-96 max-w-[94%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-6 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both] sm:px-8">
               {phase === "dead" ? (
                 <>
-                  <h2 className="font-display text-3xl font-bold text-accent-negative">
-                    Game Over
+                  {/* the verdict is the story, not the genre — the miss
+                      named in ball-widths wears the headline. Gold when
+                      the death set a record or brushed the frontier;
+                      iron red otherwise. */}
+                  <h2
+                    className={`font-display text-2xl font-bold leading-tight text-balance ${
+                      last?.closestYet || frontier
+                        ? "text-warning"
+                        : "text-accent-negative"
+                    }`}
+                  >
+                    {missLine ?? (last ? autopsy(last) : "game over")}
                   </h2>
                   {/* the run, replayed — each make stamps in on its own
                       beat, the ✗ lands last on the level that killed it,
                       and the record's pennant hangs over the slot it
-                      guards. The gap between ✗ and flag IS the pitch. */}
+                      guards, named so it never reads as a puzzle. The
+                      gap between ✗ and flag IS the pitch. */}
                   <div
-                    className="flex justify-center gap-2"
+                    className="flex justify-center gap-2.5"
                     aria-label={`died on level ${levelIdx + 1}${
                       bestDepth > 0 ? `, best level ${bestDepth}` : ""
                     }`}
@@ -2813,7 +2928,7 @@ export function Hoop() {
                       >
                         <svg
                           viewBox="0 0 8 9"
-                          className={`h-2 w-2 text-warning ${
+                          className={`h-3 w-3 text-warning ${
                             bestDepth === i + 1 ? "" : "invisible"
                           }`}
                         >
@@ -2825,48 +2940,66 @@ export function Hoop() {
                           />
                         </svg>
                         {i < levelIdx ? (
-                          <span className="h-3 w-3 rounded-full border-2 border-foreground bg-[#dfa63f]" />
+                          <span className="h-5 w-5 rounded-full border-2 border-foreground bg-[#dfa63f]" />
                         ) : i === levelIdx ? (
-                          <span className="flex h-3 w-3 items-center justify-center text-[13px] font-bold leading-none text-accent-negative">
+                          <span className="flex h-5 w-5 items-center justify-center text-xl font-bold leading-none text-accent-negative">
                             ✗
                           </span>
                         ) : (
-                          <span className="h-3 w-3 rounded-full border-2 border-border" />
+                          <span className="h-5 w-5 rounded-full border-2 border-border" />
                         )}
+                        <span
+                          className={`text-[8px] font-bold uppercase leading-none tracking-wide text-warning ${
+                            bestDepth === i + 1 ? "" : "invisible"
+                          }`}
+                        >
+                          best
+                        </span>
                       </span>
                     ))}
                   </div>
-                  {/* the autopsy — proof the make exists in your hands.
-                      "closest yet" is the record you set while losing;
-                      it wears the same gold as the near-best line. */}
-                  {missLine && (
-                    <p
-                      className={
-                        last?.closestYet
-                          ? "text-xs font-bold text-warning"
-                          : "text-xs text-muted"
-                      }
-                    >
-                      {missLine}
-                      {last?.closestYet ? " — your closest yet" : ""}
+                  {/* the stakes, in gold, right above the button that
+                      cashes them — the strongest retry triggers in the
+                      game sit adjacent to the retry */}
+                  {last?.closestYet && (
+                    <p className="text-xs font-bold text-warning">
+                      your closest yet
                     </p>
                   )}
-                  {/* the near-miss, named — dying at the frontier is the
-                      strongest retry trigger in the game */}
-                  {bestDepth > 0 && levelIdx === bestDepth && (
+                  {frontier && (
                     <p className="text-xs font-bold text-warning">
                       one make from a new best
                     </p>
                   )}
-                  {nextLevel && (
-                    <div className="flex w-full flex-col items-center gap-2 rounded-lg border border-border bg-well px-3 pb-2 pt-3">
-                      <p className="label">next up — level {nextLevel.id}</p>
-                      <MiniCourt level={nextLevel} />
-                      <p className="font-display text-sm font-semibold uppercase tracking-wide">
-                        {nextLevel.name}
-                      </p>
-                    </div>
-                  )}
+                  {/* the retry is the reward — the next court rides the
+                      button itself, a tease you cash by pressing it.
+                      Tap-anywhere still works; this is the same verb
+                      with a face. stopPropagation so the overlay's
+                      pointerdown doesn't advance before the click. */}
+                  <button
+                    onClick={advance}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="w-full overflow-hidden rounded-xl border-2 border-foreground bg-well text-foreground shadow-[4px_4px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out animate-[note-in_0.35s_cubic-bezier(0.34,1.56,0.64,1)_0.75s_both] hover:-translate-x-px hover:-translate-y-px hover:shadow-[5px_5px_0_#312d28] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
+                  >
+                    {nextLevel && (
+                      <span className="flex flex-col items-center gap-1.5 px-3 pb-2.5 pt-3">
+                        <span className="label">
+                          next up — level {nextLevel.id}
+                        </span>
+                        <MiniCourt level={nextLevel} />
+                        <span className="font-display text-sm font-semibold uppercase tracking-wide">
+                          {nextLevel.name}
+                        </span>
+                      </span>
+                    )}
+                    <span
+                      className={`flex w-full items-center justify-center gap-2 bg-[#dfa63f] py-2.5 text-xs font-bold ${
+                        nextLevel ? "border-t-2 border-foreground" : ""
+                      }`}
+                    >
+                      run it back <span aria-hidden>→</span>
+                    </span>
+                  </button>
                 </>
               ) : (
                 <>
@@ -2911,18 +3044,35 @@ export function Hoop() {
                   </div>
                 </>
               )}
+              {/* the career line moves — it holds at the pre-run total
+                  while the pips stamp, then rolls this run's deposits
+                  in with a gold +N. Numbers going up, on schedule. */}
               <p className="text-xs text-muted">
-                GAME {run} · {buckets} CAREER{" "}
-                {buckets === 1 ? "BUCKET" : "BUCKETS"}
+                GAME {run} ·{" "}
+                <CountUp
+                  from={buckets - runMakes}
+                  to={buckets}
+                  delayMs={1000}
+                />{" "}
+                CAREER {buckets === 1 ? "BUCKET" : "BUCKETS"}
+                {runMakes > 0 && (
+                  <span className="font-bold text-warning animate-[letter-pop_0.3s_ease-out_1s_both]">
+                    {" "}
+                    +{runMakes}
+                  </span>
+                )}
               </p>
-              {/* the primary action wears the ball's mustard and a real
-                  cast shadow — hover lifts it off the paper, pressing
-                  drops it flat into its own shadow. min-w so the copied
-                  swap doesn't jiggle the width. */}
+              {/* share is the primary verb only on a win — a death
+                  screen's verb is retry, so there it goes ghost. min-w
+                  so the copied swap doesn't jiggle the width. */}
               <button
                 onClick={shareRun}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+                className={
+                  phase === "beat"
+                    ? "flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+                    : "flex min-w-24 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
+                }
               >
                 {copied ? (
                   <Check size={13} strokeWidth={3} aria-hidden />
