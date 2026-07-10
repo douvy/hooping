@@ -6,6 +6,8 @@ import {
   localDay,
   nextBucketMilestone,
   parseRun,
+  shareArtifact,
+  shareStakes,
   showGestureHint,
 } from "./run.ts";
 
@@ -140,6 +142,49 @@ test("isBucketMilestone: dense early rungs, spacing out with the career", () => 
   for (const n of [0, 1, 9, 11, 26, 49, 51, 525, 999, 1001, 1500]) {
     assert.equal(isBucketMilestone(n), false, `${n}`);
   }
+});
+
+test("shareStakes: strongest claim wins, scoreboard as fallback", () => {
+  const base = {
+    frontier: false,
+    todayFrontier: false,
+    tiesBest: false,
+    closestYet: false,
+    bestDepth: 4,
+    total: 7,
+    level: 3,
+  };
+  // frontier outranks everything, even a closest-yet on the same miss
+  assert.equal(
+    shareStakes({ ...base, frontier: true, closestYet: true }),
+    "one make from my best",
+  );
+  assert.equal(
+    shareStakes({ ...base, todayFrontier: true, tiesBest: true }),
+    "one make ties my best",
+  );
+  assert.equal(
+    shareStakes({ ...base, todayFrontier: true }),
+    "one make from today's best",
+  );
+  assert.equal(shareStakes({ ...base, closestYet: true }), "my closest yet");
+  assert.equal(shareStakes(base), "best 4/7");
+  assert.equal(shareStakes({ ...base, bestDepth: 0 }), "level 3");
+});
+
+test("shareArtifact: death rows end at the ❌, wins run the rack", () => {
+  assert.equal(
+    shareArtifact({ beat: false, total: 7, makes: 2, stakes: "one make from my best" }),
+    "🟠🟠❌ · one make from my best · hooping.io",
+  );
+  assert.equal(
+    shareArtifact({ beat: false, total: 7, makes: 0, stakes: "level 1" }),
+    "❌ · level 1 · hooping.io",
+  );
+  assert.equal(
+    shareArtifact({ beat: true, total: 7, makes: 7, stakes: "ignored" }),
+    "🟠🟠🟠🟠🟠🟠🟠 · no misses · hooping.io",
+  );
 });
 
 test("nextBucketMilestone: always the next rung strictly above", () => {

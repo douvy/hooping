@@ -10,7 +10,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { track } from "@vercel/analytics";
-import { Check, Share2, Volume2, VolumeX } from "lucide-react";
+import { Volume2, VolumeX } from "lucide-react";
+import VerdictCard, { type VerdictApi } from "./VerdictCard";
 import {
   BALL_R,
   BOARD_H,
@@ -30,6 +31,8 @@ import {
   localDay,
   nextBucketMilestone,
   parseRun,
+  shareArtifact,
+  shareStakes,
   showGestureHint,
   type RunState,
 } from "@/lib/run";
@@ -50,90 +53,6 @@ function Kbd({ children }: { children: React.ReactNode }) {
       {children}
     </kbd>
   );
-}
-
-// The death-panel tease: the court the miss cost you, in miniature.
-// Drawn from the real level geometry — floor, iron, glass, walls, and
-// the launch spot — so dying on level 3 shows exactly what 4 asks.
-function MiniCourt({ level }: { level: Level }) {
-  const s = 40 / level.h;
-  const W = level.w * s;
-  const H = level.h * s;
-  const X = (x: number) => x * s;
-  const Y = (y: number) => H - y * s;
-  const boardX = level.rim.x + RIM_GAP + BOARD_OFF;
-  return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden className="overflow-visible">
-      <line x1={0} y1={Y(0)} x2={W} y2={Y(0)} stroke={THEME.outline} strokeWidth={2} />
-      {level.walls.map((w, i) => (
-        <line
-          key={i}
-          x1={X(w.x1)}
-          y1={Y(w.y1)}
-          x2={X(w.x2)}
-          y2={Y(w.y2)}
-          stroke={THEME.outline}
-          strokeWidth={3}
-          strokeLinecap="round"
-        />
-      ))}
-      {level.board && (
-        <line
-          x1={X(boardX)}
-          y1={Y(level.rim.y - 0.05)}
-          x2={X(boardX)}
-          y2={Y(level.rim.y + BOARD_H)}
-          stroke={THEME.outline}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      )}
-      <line
-        x1={X(level.rim.x)}
-        y1={Y(level.rim.y)}
-        x2={X(level.rim.x + RIM_GAP)}
-        y2={Y(level.rim.y)}
-        stroke={THEME.rim}
-        strokeWidth={2.5}
-        strokeLinecap="round"
-      />
-      <circle
-        cx={X(level.launch.x)}
-        cy={Y(level.launch.y)}
-        r={3}
-        fill={THEME.ball}
-        stroke={THEME.outline}
-        strokeWidth={1.5}
-      />
-    </svg>
-  );
-}
-
-// The career odometer — holds at the pre-run total while the pips
-// stamp, then rolls this run's deposits in. body has tabular-nums,
-// so the roll doesn't jitter the line.
-function CountUp({ from, to, delayMs }: { from: number; to: number; delayMs: number }) {
-  // initial state is already `to` when there's nothing to roll
-  const [v, setV] = useState(Math.min(from, to));
-  useEffect(() => {
-    if (from >= to) return;
-    let raf = 0;
-    const timer = setTimeout(() => {
-      const t0 = performance.now();
-      const dur = 500;
-      const tick = (now: number) => {
-        const p = Math.min(1, (now - t0) / dur);
-        setV(Math.round(from + (to - from) * (1 - (1 - p) ** 3)));
-        if (p < 1) raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
-    }, delayMs);
-    return () => {
-      clearTimeout(timer);
-      cancelAnimationFrame(raf);
-    };
-  }, [from, to, delayMs]);
-  return <>{v}</>;
 }
 
 const CANVAS_FONT = "10px ui-monospace, Menlo, monospace";
@@ -891,6 +810,9 @@ export function Hoop() {
   const [practiceLeft, setPracticeLeft] = useState(0);
   const [practiced, setPracticed] = useState(false); // this death's session, spent
   const [replaying, setReplaying] = useState(false); // gates the death card's entrance
+  // the card's choreography clock — a press mid-ceremony completes it
+  // instead of advancing, so a masher's double-tap is skip + restart
+  const verdictApiRef = useRef<VerdictApi | null>(null);
 
   const setPhaseBoth = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -2649,7 +2571,11 @@ export function Hoop() {
           : madeRef.current
             ? "joy"
             : ph === "dead"
-              ? "rest"
+              ? replayingRef.current
+                ? replayRef.current
+                  ? "watch" // the ghost is up — profile follow-through
+                  : "aim" // the wind-up: back at set point before the release
+                : "rest"
               : ph === "aim" || ph === "enter"
                 ? "aim"
                 : now - lastRimAtRef.current < 0.9
@@ -2733,9 +2659,20 @@ export function Hoop() {
         // the replay ghost re-flies the fatal arc; the broadcast tag keeps
         // it reading as a memory, not a second chance
         const rp = replayRef.current;
+        if (replayingRef.current && !rp) {
+          // the wind-up — the ghost ball back in his hands at the set
+          // point, so the release reads as a shot, not an apparition
+          ctx.globalAlpha = 0.85;
+          drawBall(ctx, sx(level.launch.x), sy(level.launch.y) - setLift, ballR, 0);
+          palmUnderBall(sx(level.launch.x), sy(level.launch.y) - setLift);
+          ctx.globalAlpha = 1;
+        }
         if (rp && !rp.state.done) {
           ctx.globalAlpha = 0.85;
           drawBall(ctx, sx(rp.state.x), sy(rp.state.y), ballR, replayRotRef.current);
+          ctx.globalAlpha = 1;
+        }
+        if (replayingRef.current) {
           ctx.font = `700 18px ${DISPLAY}`;
           ctx.textAlign = "center";
           ctx.lineJoin = "round";
@@ -3243,8 +3180,11 @@ export function Hoop() {
       if (ph === "enter") {
         setPhaseBoth("aim"); // the masher's replay must not be eaten
       } else if (ph !== "aim") {
-        // same as a press: mid-replay space cuts to the verdict card
+        // same as a press: mid-replay space cuts to the verdict card,
+        // mid-choreography it completes the card instead of past it
+        const api = verdictApiRef.current;
         if (ph === "dead" && replayingRef.current) endReplay();
+        else if (api && !api.done()) api.skip();
         else advance();
         return;
       }
@@ -3479,19 +3419,55 @@ export function Hoop() {
     });
   };
 
-  // the wordle move, upgraded: the game collapses to one PNG. Phones get
-  // the card through the native share sheet; desktop copies it to the
-  // clipboard, or downloads it when the clipboard won't take images.
+  // two artifacts, one verb. A death mints text — the wordle move: the
+  // run as emoji pips plus the stakes, and the link rides along tappable,
+  // which a PNG can never be. A win keeps the painted poster: there the
+  // flex is visual and share is the primary verb. The artifact property
+  // on the event says which one actually spreads.
   const shareRun = async () => {
     const beat = phase === "beat";
+    const coarse = matchMedia("(pointer: coarse)").matches;
     // the funnel's other end — run_end measures play, this measures spread
-    track("share", {
+    track("share", { beat, coarse, artifact: beat ? "poster" : "text" });
+    const text = shareArtifact({
       beat,
-      coarse: matchMedia("(pointer: coarse)").matches,
+      total: LEVELS.length,
+      makes: runMakes,
+      stakes: shareStakes({
+        frontier,
+        todayFrontier,
+        tiesBest: levelIdx + 1 === bestDepth,
+        closestYet: Boolean(last?.closestYet),
+        bestDepth,
+        total: LEVELS.length,
+        level: levelIdx + 1,
+      }),
     });
-    if (navigator.share && matchMedia("(pointer: coarse)").matches) {
-      // share() rejects when the user dismisses the sheet — that's a
-      // no-op, not a fallback
+    if (!beat) {
+      // share() rejects when the user dismisses the sheet — a no-op
+      if (navigator.share && coarse) {
+        try {
+          await navigator.share({ text });
+        } catch {
+          // sheet dismissed
+        }
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch {
+        // clipboard blocked — the sheet is the last resort on desktop
+        try {
+          await navigator.share?.({ text });
+        } catch {
+          // dismissed
+        }
+      }
+      return;
+    }
+    if (navigator.share && coarse) {
       try {
         const file = new File([await renderShareCard(beat)], `hooping-game-${run}.png`, {
           type: "image/png",
@@ -3501,7 +3477,7 @@ export function Hoop() {
           // would just be someone's app talking over it
           await navigator.share({ files: [file] });
         } else {
-          await navigator.share({ text: "hooping.io" }); // no file sharing — old move
+          await navigator.share({ text }); // no file sharing — the text artifact steps in
         }
       } catch {
         // sheet dismissed
@@ -3524,6 +3500,14 @@ export function Hoop() {
       a.click();
       URL.revokeObjectURL(a.href);
     }
+  };
+
+  // a verdict press: completes a running choreography, else advances —
+  // so an impatient double-tap reads skip + run it back
+  const verdictPress = () => {
+    const api = verdictApiRef.current;
+    if (api && !api.done()) api.skip();
+    else advance();
   };
 
   return (
@@ -3592,7 +3576,8 @@ export function Hoop() {
         />
 
         {/* the verdict — a real panel, not canvas text. Tap anywhere
-            (including the panel) starts the next game; the share button
+            (including the panel) starts the next game; a tap during the
+            card's choreography completes it instead. The share button
             stops the tap from advancing. On heartbreaker deaths the card
             waits in the wings while the replay plays — broadcast order. */}
         {(phase === "beat" || (phase === "dead" && !replaying)) && (
@@ -3602,225 +3587,30 @@ export function Hoop() {
               // a gold wash so the confetti rain stays lit
               phase === "beat" ? "bg-[#f2b32e]/10" : "bg-[#312d28]/40"
             }`}
-            onPointerDown={advance}
+            onPointerDown={verdictPress}
           >
-            <div className="flex w-96 max-w-[94%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-6 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both] sm:px-8">
-              {phase === "dead" ? (
-                <>
-                  {/* the verdict is the story, not the genre — the miss
-                      named in ball-widths wears the headline. Gold when
-                      the death set a record or brushed the frontier;
-                      iron red otherwise. */}
-                  <h2
-                    className={`font-display text-2xl font-bold leading-tight text-balance ${
-                      last?.closestYet || frontier
-                        ? "text-warning"
-                        : "text-accent-negative"
-                    }`}
-                  >
-                    {missLine ?? (last ? autopsy(last) : "game over")}
-                  </h2>
-                  {/* the run, replayed — each make stamps in on its own
-                      beat, the ✗ lands last on the level that killed it,
-                      and the record's pennant hangs over the slot it
-                      guards, named so it never reads as a puzzle. The
-                      gap between ✗ and flag IS the pitch. */}
-                  <div
-                    className="flex justify-center gap-2.5"
-                    aria-label={`died on level ${levelIdx + 1}${
-                      bestDepth > 0 ? `, best level ${bestDepth}` : ""
-                    }`}
-                  >
-                    {LEVELS.map((_, i) => (
-                      <span
-                        key={i}
-                        aria-hidden
-                        className="flex flex-col items-center gap-[3px] animate-[letter-pop_0.4s_cubic-bezier(0.34,1.56,0.64,1)_both]"
-                        style={{ animationDelay: `${0.35 + i * 0.07}s` }}
-                      >
-                        <svg
-                          viewBox="0 0 8 9"
-                          className={`h-3 w-3 text-warning ${
-                            bestDepth === i + 1 ? "" : "invisible"
-                          }`}
-                        >
-                          <path
-                            d="M0 .5h8L4 8.5Z"
-                            fill="currentColor"
-                            stroke="var(--foreground)"
-                            strokeWidth="1"
-                          />
-                        </svg>
-                        {i < levelIdx ? (
-                          <span className="h-5 w-5 rounded-full border-2 border-foreground bg-[#dfa63f]" />
-                        ) : i === levelIdx ? (
-                          <span className="flex h-5 w-5 items-center justify-center text-xl font-bold leading-none text-accent-negative">
-                            ✗
-                          </span>
-                        ) : (
-                          <span className="h-5 w-5 rounded-full border-2 border-border" />
-                        )}
-                        <span
-                          className={`text-[8px] font-bold uppercase leading-none tracking-wide text-warning ${
-                            bestDepth === i + 1 ? "" : "invisible"
-                          }`}
-                        >
-                          best
-                        </span>
-                      </span>
-                    ))}
-                  </div>
-                  {/* the stakes, in gold, right above the button that
-                      cashes them — the strongest retry triggers in the
-                      game sit adjacent to the retry */}
-                  {last?.closestYet && (
-                    <p className="text-xs font-bold text-warning">
-                      your closest yet
-                    </p>
-                  )}
-                  {frontier && (
-                    <p className="text-xs font-bold text-warning">
-                      one make from a new best
-                    </p>
-                  )}
-                  {todayFrontier && (
-                    <p className="text-xs font-bold text-warning">
-                      {levelIdx + 1 === bestDepth
-                        ? "one make ties your best"
-                        : "one make from today's best"}
-                    </p>
-                  )}
-                  {/* the retry is the reward — the next court rides the
-                      button itself, a tease you cash by pressing it.
-                      Tap-anywhere still works; this is the same verb
-                      with a face. stopPropagation so the overlay's
-                      pointerdown doesn't advance before the click. */}
-                  <button
-                    onClick={advance}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className="w-full overflow-hidden rounded-xl border-2 border-foreground bg-well text-foreground shadow-[4px_4px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out animate-[note-in_0.35s_cubic-bezier(0.34,1.56,0.64,1)_0.75s_both] hover:-translate-x-px hover:-translate-y-px hover:shadow-[5px_5px_0_#312d28] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
-                  >
-                    {nextLevel && (
-                      <span className="flex flex-col items-center gap-1.5 px-3 pb-2.5 pt-3">
-                        <span className="label">
-                          next up — level {nextLevel.id}
-                        </span>
-                        <MiniCourt level={nextLevel} />
-                        <span className="font-display text-sm font-semibold uppercase tracking-wide">
-                          {nextLevel.name}
-                        </span>
-                      </span>
-                    )}
-                    <span
-                      className={`flex w-full items-center justify-center gap-2 bg-[#dfa63f] py-2.5 text-xs font-bold ${
-                        nextLevel ? "border-t-2 border-foreground" : ""
-                      }`}
-                    >
-                      run it back <span aria-hidden>→</span>
-                    </span>
-                  </button>
-                </>
-              ) : (
-                <>
-                  {/* the banner — champion lettering. each letter stamps
-                      in on its own beat with a hand-set tilt, then the
-                      whole line hangs from its nail and sways. */}
-                  <h2
-                    aria-label="You Beat It"
-                    className="origin-top animate-[banner-sway_3.4s_ease-in-out_1.4s_infinite] font-display text-3xl font-bold text-warning [text-shadow:0.07em_0.07em_0_var(--foreground)]"
-                  >
-                    {"You Beat It".split("").map((ch, i) => (
-                      <span
-                        key={i}
-                        aria-hidden
-                        className="inline-block whitespace-pre animate-[letter-pop_0.5s_cubic-bezier(0.34,1.56,0.64,1)_both]"
-                        style={{
-                          animationDelay: `${0.3 + i * 0.05}s`,
-                          // hand-set type: nothing sits perfectly straight
-                          rotate: `${((i * 7) % 5) - 2}deg`,
-                        }}
-                      >
-                        {ch}
-                      </span>
-                    ))}
-                  </h2>
-                  {/* his note — taped on askew after the banner settles */}
-                  <div className="relative w-full rotate-[-2deg] rounded-sm border border-border bg-surface px-4 pb-2 pt-3 shadow-[2px_2px_0_rgba(49,45,40,0.12)] animate-[note-in_0.4s_cubic-bezier(0.34,1.56,0.64,1)_1s_both]">
-                    <div
-                      aria-hidden
-                      className="absolute -top-2 left-1/2 h-4 w-10 -translate-x-1/2 rotate-[4deg] rounded-[1px] bg-[#eae2cb]/80"
-                    />
-                    <p className="font-hand text-xl leading-tight text-foreground">
-                      all {LEVELS.length} levels, one ball, no misses.
-                      <br />
-                      {wins > 1
-                        ? `that's banner ${wins} in the rafters.`
-                        : "i watched every shot."}
-                    </p>
-                    <p className="mt-1 text-right font-hand text-lg text-muted">
-                      — the little guy
-                    </p>
-                  </div>
-                </>
-              )}
-              {/* the career line moves — it holds at the pre-run total
-                  while the pips stamp, then rolls this run's deposits
-                  in with a gold +N. Numbers going up, on schedule. */}
-              <p className="text-xs text-muted">
-                GAME {run} ·{" "}
-                <CountUp
-                  from={buckets - runMakes}
-                  to={buckets}
-                  delayMs={1000}
-                />{" "}
-                CAREER {buckets === 1 ? "BUCKET" : "BUCKETS"}
-                {runMakes > 0 && (
-                  <span className="font-bold text-warning animate-[letter-pop_0.3s_ease-out_1s_both]">
-                    {" "}
-                    +{runMakes}
-                  </span>
-                )}
-                {/* the next rung, always in sight — a counter that only
-                    climbs deserves a visible finish line */}
-                {buckets > 0 && <> · {nextMile - buckets} TO {nextMile}</>}
-              </p>
-              {/* share is the primary verb only on a win — a death
-                  screen's verb is retry, so there it goes ghost. min-w
-                  so the copied swap doesn't jiggle the width. Death
-                  cards seat the gym pass beside it: three free balls on
-                  the shot that killed the run, one session per death —
-                  enough to find the answer, not enough to groove it. */}
-              <div className="flex items-center gap-2.5">
-                {phase === "dead" && !practiced && (
-                  <button
-                    onClick={startPractice}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className="flex items-center justify-center rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
-                  >
-                    practice it
-                  </button>
-                )}
-                <button
-                  onClick={shareRun}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  className={
-                    phase === "beat"
-                      ? "flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
-                      : "flex min-w-24 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
-                  }
-                >
-                  {copied ? (
-                    <Check size={13} strokeWidth={3} aria-hidden />
-                  ) : (
-                    <Share2 size={13} strokeWidth={2.5} aria-hidden />
-                  )}
-                  {copied ? "copied" : "share"}
-                </button>
-              </div>
-              <p className="animate-pulse text-[11px] text-muted">
-                tap anywhere to play again
-              </p>
-            </div>
+            <VerdictCard
+              ref={verdictApiRef}
+              phase={phase === "beat" ? "beat" : "dead"}
+              headline={missLine ?? (last ? autopsy(last) : "game over")}
+              goldHeadline={Boolean(last?.closestYet || frontier)}
+              levelIdx={levelIdx}
+              bestDepth={bestDepth}
+              closestYet={Boolean(last?.closestYet)}
+              frontier={frontier}
+              todayFrontier={todayFrontier}
+              nextLevel={nextLevel}
+              run={run}
+              buckets={buckets}
+              runMakes={runMakes}
+              nextMile={nextMile}
+              wins={wins}
+              practiced={practiced}
+              copied={copied}
+              onAdvance={advance}
+              onPractice={startPractice}
+              onShare={shareRun}
+            />
           </div>
         )}
       </div>

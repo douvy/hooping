@@ -113,6 +113,43 @@ export function showGestureHint(
   return (bestDepth === 0 || !shotThisSession) && levelIdx === 0;
 }
 
+/** The one stakes line a share can carry, strongest claim first — the
+ * same ladder the death card climbs, worded in first person because the
+ * artifact speaks as the player. Falls back to the scoreboard when the
+ * run made no news. */
+export function shareStakes(opts: {
+  frontier: boolean;
+  todayFrontier: boolean;
+  tiesBest: boolean;
+  closestYet: boolean;
+  bestDepth: number;
+  total: number;
+  /** 1-based level the run died on */
+  level: number;
+}): string {
+  if (opts.frontier) return "one make from my best";
+  if (opts.todayFrontier)
+    return opts.tiesBest ? "one make ties my best" : "one make from today's best";
+  if (opts.closestYet) return "my closest yet";
+  if (opts.bestDepth > 0) return `best ${opts.bestDepth}/${opts.total}`;
+  return `level ${opts.level}`;
+}
+
+/** The share text — the wordle move in one line: the run as emoji pips,
+ * the stakes, the link. A death row ends at the ❌ (no trailing empties;
+ * the cut is the story), a win runs the full rack. */
+export function shareArtifact(opts: {
+  beat: boolean;
+  total: number;
+  makes: number;
+  stakes: string;
+}): string {
+  const row = opts.beat
+    ? "🟠".repeat(opts.total)
+    : "🟠".repeat(opts.makes) + "❌";
+  return `${row} · ${opts.beat ? "no misses" : opts.stakes} · hooping.io`;
+}
+
 /** The autopsy line: a miss named in ball-widths, the unit a shooter
  * can feel. Bricks past three balls get silence — a blowout needs no
  * narration, and "off by nine balls" would read as mockery. */
