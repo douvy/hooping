@@ -53,6 +53,35 @@ export const SKIES = [
   "#2b3252",
 ] as const;
 
+/** Linear blend a→b in RGB — ambient light lives here: paint mixed
+ * toward the sky it stands under. */
+export function mix(a: string, b: string, t: number): string {
+  let out = "#";
+  for (let i = 1; i < 7; i += 2) {
+    const ca = parseInt(a.slice(i, i + 2), 16);
+    const cb = parseInt(b.slice(i, i + 2), 16);
+    out += Math.round(ca + (cb - ca) * t)
+      .toString(16)
+      .padStart(2, "0");
+  }
+  return out;
+}
+
+/** Push a hex color's channels away from their mean — s>1 deepens the
+ * hue instead of graying it. Darkened-sky silhouettes go muddy without
+ * this; saturate-then-darken keeps a blue city blue and a golden city
+ * ochre. */
+export function saturate(hex: string, s: number): string {
+  const ch = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const m = (ch[0] + ch[1] + ch[2]) / 3;
+  let out = "#";
+  for (const c of ch) {
+    const v = Math.max(0, Math.min(255, Math.round(m + (c - m) * s)));
+    out += v.toString(16).padStart(2, "0");
+  }
+  return out;
+}
+
 /** Scale a hex color's channels — f<1 darkens (skyline layers, seams),
  * f>1 lightens, clamped to the byte. */
 export function darken(hex: string, f: number): string {

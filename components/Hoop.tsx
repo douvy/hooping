@@ -33,7 +33,7 @@ import {
 } from "@/lib/run";
 import { createSpring } from "@/lib/spring";
 import * as sound from "@/lib/sound";
-import { SKIES, THEME, darken, withAlpha } from "@/lib/theme";
+import { SKIES, THEME, darken, mix, saturate, withAlpha } from "@/lib/theme";
 
 // Layout is the Doodle Jump deal: one thin readout bar, one thin status
 // line, and every other pixel is the game. The hand-touched detail lives
@@ -146,6 +146,408 @@ const NIGHT = [0, 0, 0.15, 0.45, 0.8, 1];
 function hash01(n: number): number {
   const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
   return x - Math.floor(x);
+}
+
+// ——— the backdrop, shared by the live canvas and the share card ———
+// Module-level painters: everything is deterministic off hash01 plus a
+// clock, so the poster can freeze any moment of the same world.
+
+// scale unit — the skyline furniture is hand-tuned against ~520px of
+// sky, then scales for tablets and the 1080px card
+function skyU(floorY: number): number {
+  return Math.max(0.8, Math.min(2.2, floorY / 520));
+}
+
+// the sun and the moon — the sky's clock hands. No sun at midday
+// (levels 1-2): overhead light isn't in frame, and a sticker sun on a
+// bright sky is clip art. It enters at golden hour, already big and
+// dropping, and sinks into the skyline as the levels climb — the
+// swollen level-4 sunset is the reward. Once it's under, a paper
+// crescent takes the other shoulder of the sky.
+function drawCelestials(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  floorY: number,
+  sky: string,
+  night: number,
+  now: number,
+) {
+  if (night >= 0.15 && night < 0.62) {
+    const sunX = W * 0.76;
+    const sunY = floorY * (0.16 + night * 1.5);
+    const r = floorY * (0.075 + night * 0.15);
+    // the halo breathes slowly — alive, not blinking
+    ctx.fillStyle = withAlpha(THEME.gold, "26");
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, r * (1.45 + 0.05 * Math.sin(now * 0.5)), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = THEME.gold;
+    ctx.beginPath();
+    ctx.arc(sunX, sunY, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (night > 0.55) {
+    const mx = W * 0.22;
+    const my = floorY * 0.16;
+    const r = floorY * 0.07;
+    const a = Math.min(1, (night - 0.55) / 0.25);
+    ctx.fillStyle = THEME.paper;
+    ctx.globalAlpha = 0.12 * a;
+    ctx.beginPath();
+    ctx.arc(mx, my, r * 1.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.arc(mx, my, r, 0, Math.PI * 2);
+    ctx.fill();
+    // the bite — a sky-colored disc clipped to the moon, so the halo
+    // can't ring the crescent's hollow
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(mx, my, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = sky;
+    ctx.beginPath();
+    ctx.arc(mx + r * 0.45, my - r * 0.2, r * 0.82, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// the city's daylight paint — Koriko rules: facades own their color
+// (cream, brick, rose, ochre) and the roofs answer in verdigris, slate,
+// and dusk brick. Ambient light does the rest.
+const FACADES = ["#ead9b0", "#bd6b52", "#cf9282", "#dda75c"] as const;
+const ROOFS = ["#74a898", "#5c6674", "#a05545"] as const;
+
+// the city — the Kiki's Delivery Service move translated to flat
+// side-view: two hazy silhouette layers for distance, then a painted
+// row of houses up front with real facade colors, pitched roofs,
+// chimneys with paper steam, and one clock tower over the roofline
+// whose clock tells the run's hour — 4pm at level 1, midnight at the
+// keyhole. Every color is mixed toward the sky and dimmed with night,
+// so the same brick street reads afternoon-warm at four and plum after
+// dark. Windows are dark by day and light one by one as night comes on
+// — the same window hash every visit, so the city fills in rather than
+// reshuffles. party (the beat screen and its card) turns nearly every
+// window on.
+function drawSkyline(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  floorY: number,
+  sky: string,
+  night: number,
+  now: number,
+  opts: { party?: boolean; hScale?: number } = {},
+) {
+  const u = skyU(floorY);
+  const hS = opts.hScale ?? 1;
+  const party = opts.party ?? false;
+  // ambient — paint leans toward the sky, then loses light with night
+  const amb = (c: string) => darken(mix(c, sky, 0.28 + 0.3 * night), 1 - 0.38 * night);
+  const litFrac = party ? 0.92 : night <= 0.12 ? 0 : 0.08 + 0.4 * night;
+  const lampA = Math.min(1, 0.35 + night) * 0.9;
+
+  // horizon haze — two paler strips of the same sky; the far towers
+  // stand in them and the flat backdrop reads ten more miles deep
+  ctx.fillStyle = darken(sky, 1.05);
+  ctx.fillRect(0, floorY - floorY * 0.3 * hS, W, floorY * 0.3 * hS);
+  ctx.fillStyle = darken(sky, 1.11);
+  ctx.fillRect(0, floorY - floorY * 0.14 * hS, W, floorY * 0.14 * hS);
+
+  // ——— distance: two silhouette layers, saturate-then-darken so the
+  // haze keeps the sky's hue instead of going gray ———
+  let masts = 0;
+  for (const [sat, f, hMin, hMax, wMin, wVar, gapMul, seed, detail] of [
+    [1.25, 0.92, 0.3, 0.72, 26, 64, 1.35, 500, false], // far — pale, thin, spaced
+    [1.45, 0.8, 0.18, 0.6, 44, 130, 1, 700, true], // back
+  ] as const) {
+    const bc = darken(saturate(sky, sat), f);
+    ctx.fillStyle = bc;
+    for (let bx = -30 * u - seed * 0.01, bi = 0; bx < W; bi++) {
+      const bw = (wMin + hash01(seed + bi * 3 + 1) * wVar) * u;
+      const bh = (hMin + hash01(seed + bi * 3 + 2) * (hMax - hMin)) * floorY * hS;
+      const roof = hash01(seed + bi * 3 + 3);
+      const top = floorY - bh;
+      const cr = Math.min(12 * u, bw * 0.15);
+      ctx.beginPath();
+      ctx.roundRect(bx, top, bw, bh, [cr, cr, 0, 0]);
+      if (roof < 0.16) {
+        // the knob — a small rounded nub off one shoulder
+        ctx.roundRect(bx + bw * 0.14, top - 9 * u, 16 * u, 14 * u, 5 * u);
+      }
+      ctx.fill();
+
+      // roofline furniture, silhouette-colored — same paper cut
+      if (detail && roof >= 0.16) {
+        const fx = bx + bw * (0.24 + hash01(seed + bi * 3 + 5) * 0.4);
+        if (roof < 0.26 && bw > 80 * u) {
+          // water tank — legs, drum, conical lid
+          ctx.beginPath();
+          ctx.rect(fx - 8 * u, top - 8 * u, 3 * u, 9 * u);
+          ctx.rect(fx + 5 * u, top - 8 * u, 3 * u, 9 * u);
+          ctx.roundRect(fx - 10.5 * u, top - 22 * u, 21 * u, 15 * u, 2 * u);
+          ctx.moveTo(fx - 10.5 * u, top - 21 * u);
+          ctx.lineTo(fx, top - 28 * u);
+          ctx.lineTo(fx + 10.5 * u, top - 21 * u);
+          ctx.closePath();
+          ctx.fill();
+        } else if (roof >= 0.26 && roof < 0.36) {
+          // stair bulkhead
+          ctx.beginPath();
+          ctx.roundRect(fx - 12 * u, top - 11 * u, 24 * u, 12 * u, [3 * u, 3 * u, 0, 0]);
+          ctx.fill();
+        } else if (roof >= 0.36 && roof < 0.46 && masts < 2) {
+          // radio mast — its beacon pulses once the sky is dark enough
+          // to need warning
+          masts++;
+          ctx.fillRect(fx - 1.5 * u, top - 26 * u, 3 * u, 27 * u);
+          if (night > 0.3 || party) {
+            const pulse = party ? 1 : 0.5 + 0.5 * Math.sin(now * 2.4 + bi);
+            ctx.globalAlpha = 0.35 + 0.65 * pulse;
+            ctx.fillStyle = THEME.rim;
+            ctx.beginPath();
+            ctx.arc(fx, top - 27 * u, 3 * u, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = bc;
+          }
+        }
+      }
+
+      // lit windows on the silhouettes — sparse grid, night only
+      if (detail && litFrac > 0) {
+        const cols = Math.min(8, Math.floor((bw - 8 * u) / (13 * u)));
+        const rows = Math.min(6, Math.floor((bh - 12 * u) / (16 * u)));
+        if (cols > 0 && rows > 0) {
+          const gx0 = bx + (bw - cols * 13 * u) / 2 + 4.5 * u;
+          ctx.fillStyle = THEME.lamp;
+          ctx.globalAlpha = lampA * 0.55;
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              if (hash01(seed + bi * 173 + r * 31 + c * 7) >= litFrac * 0.7) continue;
+              ctx.fillRect(gx0 + c * 13 * u, top + 8 * u + r * 16 * u, 4 * u, 5 * u);
+            }
+          }
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = bc;
+        }
+      }
+
+      // overlap or gap, hung by eye — unions within a layer read as
+      // one silhouette, gaps show the layer behind. A sliver gap reads
+      // as a seam, not a gap — too-thin gaps widen to a readable one.
+      let nx = bx + bw * (0.72 + hash01(seed + bi * 3 + 4) * 0.55) * gapMul;
+      const gap = nx - (bx + bw);
+      if (gap > 0 && gap < 20 * u) nx = bx + bw + 20 * u;
+      bx = nx;
+    }
+  }
+
+  // ——— the clock tower — one landmark, risen behind the front row.
+  // Its clock keeps the ladder's time: NIGHT maps to 4pm..midnight. ———
+  {
+    const tx = W * 0.3;
+    const tw = 30 * u;
+    const th = floorY * 0.58 * hS;
+    const top = floorY - th;
+    const body = amb("#c8a678");
+    ctx.fillStyle = body;
+    ctx.fillRect(tx - tw / 2, top, tw, th);
+    // a shaded edge so the shaft reads round-ish, not a plank
+    ctx.fillStyle = darken(body, 0.85);
+    ctx.fillRect(tx + tw / 2 - 5 * u, top, 5 * u, th);
+    // the clock head — slightly proud of the shaft
+    const hw = tw + 8 * u;
+    ctx.fillStyle = body;
+    ctx.fillRect(tx - hw / 2, top, hw, 34 * u);
+    ctx.fillStyle = darken(body, 0.8);
+    ctx.fillRect(tx - hw / 2, top + 34 * u, hw, 3 * u);
+    // verdigris cap and spire, mustard finial
+    const cap = amb(ROOFS[0]);
+    ctx.fillStyle = cap;
+    ctx.beginPath();
+    ctx.moveTo(tx - hw / 2 - 2 * u, top);
+    ctx.lineTo(tx + hw / 2 + 2 * u, top);
+    ctx.lineTo(tx + 4 * u, top - 22 * u);
+    ctx.lineTo(tx - 4 * u, top - 22 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillRect(tx - 1.5 * u, top - 32 * u, 3 * u, 11 * u);
+    ctx.fillStyle = THEME.ball;
+    ctx.beginPath();
+    ctx.arc(tx, top - 33 * u, 3 * u, 0, Math.PI * 2);
+    ctx.fill();
+    // the face — paper under the same light, hands telling the level's
+    // hour. Lit from inside once the city needs it.
+    const fy = top + 17 * u;
+    const fr = 11 * u;
+    ctx.fillStyle = night > 0.45 || party ? THEME.lamp : amb(THEME.paper);
+    ctx.beginPath();
+    ctx.arc(tx, fy, fr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = darken(body, 0.7);
+    ctx.lineWidth = 2 * u;
+    ctx.stroke();
+    const hour = 16 + 8 * night; // the ladder's clock
+    const ha = ((hour % 12) / 12) * Math.PI * 2 - Math.PI / 2;
+    const ma = (hour % 1) * Math.PI * 2 - Math.PI / 2;
+    ctx.strokeStyle = THEME.outline;
+    ctx.lineWidth = 1.8 * u;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(tx, fy);
+    ctx.lineTo(tx + Math.cos(ha) * fr * 0.5, fy + Math.sin(ha) * fr * 0.5);
+    ctx.moveTo(tx, fy);
+    ctx.lineTo(tx + Math.cos(ma) * fr * 0.78, fy + Math.sin(ma) * fr * 0.78);
+    ctx.stroke();
+    ctx.lineCap = "butt";
+    ctx.lineWidth = 1;
+    // slim shaft windows below the face
+    ctx.fillStyle = darken(body, 0.62);
+    for (let r = 0; r < 3; r++) {
+      const wy = fy + fr + (14 + r * 24) * u;
+      if (wy > floorY - 20 * u) break;
+      ctx.fillRect(tx - 7 * u, wy, 4 * u, 8 * u);
+      ctx.fillRect(tx + 3 * u, wy, 4 * u, 8 * u);
+    }
+  }
+
+  // ——— the front row — painted houses, Koriko rules ———
+  let billboard = false;
+  let steams = 0;
+  const seed = 900;
+  for (let bx = -24 * u, bi = 0; bx < W; bi++) {
+    const bw = (54 + hash01(seed + bi * 3 + 1) * 76) * u;
+    const wh = (0.07 + hash01(seed + bi * 3 + 2) * 0.19) * floorY * hS;
+    const roof = hash01(seed + bi * 3 + 3);
+    const top = floorY - wh;
+    const fc = amb(FACADES[Math.floor(hash01(seed + bi * 5 + 8) * FACADES.length)]);
+    const rc = amb(ROOFS[Math.floor(hash01(seed + bi * 5 + 9) * ROOFS.length)]);
+
+    // the wall and its cornice
+    ctx.fillStyle = fc;
+    ctx.fillRect(bx, top, bw, wh);
+    ctx.fillStyle = darken(fc, 0.82);
+    ctx.fillRect(bx, top, bw, 3 * u);
+
+    // the roof — gable, mansard, or flat parapet, eaves a hair proud
+    if (roof < 0.4) {
+      // gable
+      ctx.fillStyle = rc;
+      ctx.beginPath();
+      ctx.moveTo(bx - 3 * u, top);
+      ctx.lineTo(bx + bw + 3 * u, top);
+      ctx.lineTo(bx + bw * 0.5, top - (14 + hash01(seed + bi * 5 + 10) * 8) * u);
+      ctx.closePath();
+      ctx.fill();
+    } else if (roof < 0.72) {
+      // mansard — a trapezoid with a flat lid
+      const rh = (12 + hash01(seed + bi * 5 + 10) * 6) * u;
+      ctx.fillStyle = rc;
+      ctx.beginPath();
+      ctx.moveTo(bx - 3 * u, top);
+      ctx.lineTo(bx + bw + 3 * u, top);
+      ctx.lineTo(bx + bw - 9 * u, top - rh);
+      ctx.lineTo(bx + 9 * u, top - rh);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = darken(rc, 0.85);
+      ctx.fillRect(bx + 9 * u, top - rh, bw - 18 * u, 2.5 * u);
+    } else {
+      // flat parapet
+      ctx.fillStyle = rc;
+      ctx.fillRect(bx - 2 * u, top - 5 * u, bw + 4 * u, 6 * u);
+    }
+
+    // chimney — brick stub off-ridge; a couple of them still smoke
+    if (hash01(seed + bi * 5 + 11) < 0.45) {
+      const cx2 = bx + bw * (0.18 + hash01(seed + bi * 5 + 12) * 0.3);
+      const ct = top - (roof < 0.4 ? 18 : roof < 0.72 ? 20 : 12) * u;
+      ctx.fillStyle = darken(fc, 0.72);
+      ctx.fillRect(cx2 - 4 * u, ct, 8 * u, top - ct + 2 * u);
+      ctx.fillRect(cx2 - 5.5 * u, ct - 3 * u, 11 * u, 3.5 * u);
+      if (steams < 2 && hash01(seed + bi * 5 + 13) < 0.4) {
+        steams++;
+        ctx.fillStyle = THEME.paper;
+        for (let k = 0; k < 3; k++) {
+          const p = (now * 0.12 + k * 0.33 + hash01(bi * 7 + k)) % 1;
+          ctx.globalAlpha = 0.22 * (1 - p);
+          ctx.beginPath();
+          ctx.arc(
+            cx2 + Math.sin((p * 3 + k) * 2.1) * 4 * u,
+            ct - 6 * u - p * 34 * u,
+            (2.5 + p * 4.5) * u,
+            0,
+            Math.PI * 2,
+          );
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // the billboard — the city advertising the game back at you. One
+    // per skyline; more would read as a joke told twice.
+    if (roof >= 0.72 && bw > 100 * u && !billboard) {
+      billboard = true;
+      const bbw = Math.min(bw * 0.72, 92 * u);
+      const bbh = 28 * u;
+      const bbx = bx + (bw - bbw) / 2;
+      const bby = top - bbh - 13 * u;
+      ctx.fillStyle = darken(fc, 0.6);
+      ctx.fillRect(bbx + bbw * 0.2, top - 14 * u, 3 * u, 10 * u);
+      ctx.fillRect(bbx + bbw * 0.8 - 3 * u, top - 14 * u, 3 * u, 10 * u);
+      ctx.beginPath();
+      ctx.roundRect(bbx - 2 * u, bby - 2 * u, bbw + 4 * u, bbh + 4 * u, 3 * u);
+      ctx.fill();
+      ctx.fillStyle = amb(THEME.paper);
+      ctx.fillRect(bbx, bby, bbw, bbh);
+      ctx.fillStyle = THEME.ball;
+      ctx.beginPath();
+      ctx.arc(bbx + bbh * 0.5, bby + bbh * 0.5, bbh * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      // two lines of unreadable copy
+      ctx.fillStyle = darken(fc, 0.6);
+      ctx.fillRect(bbx + bbh * 0.95, bby + bbh * 0.32, bbw - bbh * 1.3, 2.5 * u);
+      ctx.fillRect(bbx + bbh * 0.95, bby + bbh * 0.58, (bbw - bbh * 1.3) * 0.6, 2.5 * u);
+    }
+
+    // windows — dark panes by day on a real grid, lamps coming on one
+    // by one with night. Each window owns its hash forever.
+    {
+      const cols = Math.min(7, Math.floor((bw - 12 * u) / (14 * u)));
+      const rows = Math.min(4, Math.floor((wh - 12 * u) / (17 * u)));
+      if (cols > 0 && rows > 0) {
+        const paneInk = darken(fc, 0.55);
+        const gx0 = bx + (bw - cols * 14 * u) / 2 + (14 * u - 5 * u) / 2;
+        const gy0 = top + 9 * u;
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const t = hash01(seed + bi * 173 + r * 31 + c * 7);
+            const wx = gx0 + c * 14 * u;
+            const wy = gy0 + r * 17 * u;
+            if (t < litFrac) {
+              // the newest lamp still flickers — someone just got home
+              const flick =
+                t > litFrac - 0.03 && Math.sin(now * 3 + t * 90) < -0.2 ? 0.3 : 1;
+              ctx.fillStyle = THEME.lamp;
+              ctx.globalAlpha = lampA * flick;
+              ctx.fillRect(wx - u, wy - u, 7 * u, 9 * u);
+              ctx.globalAlpha = 1;
+            } else {
+              ctx.fillStyle = paneInk;
+              ctx.fillRect(wx, wy, 5 * u, 7 * u);
+            }
+          }
+        }
+      }
+    }
+
+    // row houses touch; an alley now and then shows the layer behind
+    bx += bw + (hash01(seed + bi * 3 + 4) < 0.24 ? 18 * u : -1);
+  }
 }
 
 const kickSpring = createSpring({ stiffness: 320, damping: 14, mass: 1 });
@@ -1514,6 +1916,9 @@ export function Hoop() {
         ctx.globalAlpha = 1;
       }
 
+      // sun or moon — behind the clouds, ahead of the city
+      drawCelestials(ctx, W, floorY, SKY, night, now);
+
       // clouds — flat paper cumulus drifting by, gone after dark. Built
       // like the reference sky: a tall round head and two shoulder lobes
       // sitting on a flat base, not a stretched lens. cy is the cloud's
@@ -1629,57 +2034,11 @@ export function Hoop() {
         }
       }
 
-      // the city — two flat skyline layers cut from the sky's own color,
-      // back layer tall and pale, front layer low and deep. Big slabs and
-      // thin towers, every roof capped with the same soft corner radius;
-      // same-color neighbors overlap into union silhouettes. One roof
-      // accent only, used sparsely: a little knob off one shoulder —
-      // anything pointier fights the soft language. Windows warm up as
-      // the day goes.
-      for (const [f, hMin, hMax, seed] of [
-        [0.86, 0.18, 0.6, 700], // back — heights as fractions of the ground line
-        [0.72, 0.08, 0.32, 900], // front
-      ] as const) {
-        const bc = darken(SKY, f);
-        ctx.fillStyle = bc;
-        for (let bx = -30 - seed * 0.01, bi = 0; bx < W; bi++) {
-          const bw = 44 + hash01(seed + bi * 3 + 1) * 130;
-          const bh = (hMin + hash01(seed + bi * 3 + 2) * (hMax - hMin)) * floorY;
-          const roof = hash01(seed + bi * 3 + 3);
-          const top = floorY - bh;
-          const cr = Math.min(12, bw * 0.15);
-          ctx.beginPath();
-          ctx.roundRect(bx, top, bw, bh, [cr, cr, 0, 0]);
-          if (roof < 0.16) {
-            // the knob — a small rounded nub off one shoulder
-            ctx.roundRect(bx + bw * 0.14, top - 9, 16, 14, 5);
-          }
-          ctx.fill();
-          if (night > 0.2) {
-            // lit windows — sparse, warm, more attempts on bigger slabs
-            // so density stays even
-            const wn = Math.min(18, Math.round(3 + (bw * bh) / 2000));
-            ctx.fillStyle = THEME.lamp;
-            ctx.globalAlpha = 0.6 * night;
-            for (let wi = 0; wi < wn; wi++) {
-              if (hash01(seed + bi * 97 + wi * 13) > 0.3) continue;
-              const wx = bx + 5 + hash01(seed + bi * 31 + wi * 7) * (bw - 11);
-              const wy = floorY - bh + 8 + hash01(seed + bi * 53 + wi * 11) * (bh - 16);
-              ctx.fillRect(wx, wy, 3, 4);
-            }
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = bc;
-          }
-          // overlap or gap, hung by eye — unions within a layer read as
-          // one silhouette, gaps show the layer behind. A sliver gap
-          // reads as a seam, not a gap (the back pair sat 2px apart at
-          // phone width) — too-thin gaps widen to a readable one.
-          let nx = bx + bw * (0.72 + hash01(seed + bi * 3 + 4) * 0.55);
-          const gap = nx - (bx + bw);
-          if (gap > 0 && gap < 20) nx = bx + bw + 20;
-          bx = nx;
-        }
-      }
+      // the city — see drawSkyline. The beat screen throws the party:
+      // every window in town comes on.
+      drawSkyline(ctx, W, floorY, SKY, night, now, {
+        party: phaseRef.current === "beat",
+      });
 
       // the ground — an asphalt court cap set in bright grass, everything
       // wearing the outline
@@ -2700,9 +3059,11 @@ export function Hoop() {
       "ui-monospace, Menlo, monospace";
     const night = NIGHT[levelIdx] ?? 1;
     const grassY = H - 290;
+    const sky = SKIES[levelIdx] ?? SKIES[SKIES.length - 1];
 
-    // the sky the run ended under, stars and all
-    ctx.fillStyle = SKIES[levelIdx] ?? SKIES[SKIES.length - 1];
+    // the sky the run ended under — stars, sun or moon, the whole
+    // painted city. The card is a postcard from the level you died on.
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, W, H);
     if (night > 0.5) {
       ctx.fillStyle = PAPER;
@@ -2712,6 +3073,9 @@ export function Hoop() {
       }
       ctx.globalAlpha = 1;
     }
+    // fixed clock — every card of the same run is the same picture
+    drawCelestials(ctx, W, grassY, sky, night, 0.35);
+    drawSkyline(ctx, W, grassY, sky, night, 0.35, { party: beat, hScale: 0.55 });
 
     // sticker lettering, the game's house style
     ctx.textAlign = "center";
