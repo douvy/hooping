@@ -9,6 +9,7 @@
 // clear all six, and the red ! when the run dies.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { track } from "@vercel/analytics";
 import { Check, Share2, Volume2, VolumeX } from "lucide-react";
 import {
   BALL_R,
@@ -23,7 +24,13 @@ import {
   type Shooter,
   type Touch,
 } from "@/lib/hoop";
-import { describeMiss, isBucketMilestone, parseRun, type RunState } from "@/lib/run";
+import {
+  describeMiss,
+  isBucketMilestone,
+  parseRun,
+  showGestureHint,
+  type RunState,
+} from "@/lib/run";
 import { createSpring } from "@/lib/spring";
 import * as sound from "@/lib/sound";
 import { SKIES, THEME, darken, withAlpha } from "@/lib/theme";
@@ -437,8 +444,22 @@ export function Hoop() {
         saveRun(next);
         return next;
       });
+      // the run's one datapoint — depth by input type, so the mobile/
+      // desktop difficulty gap gets measured on players, not the sim
+      if (depth === LEVELS.length) {
+        track("run_end", {
+          depth,
+          beat: true,
+          coarse: matchMedia("(pointer: coarse)").matches,
+        });
+      }
       setPhaseBoth(depth === LEVELS.length ? "beat" : "cleared");
     } else {
+      track("run_end", {
+        depth: levelIdxRef.current,
+        beat: false,
+        coarse: matchMedia("(pointer: coarse)").matches,
+      });
       // the near-miss gets named too — an in-and-out hurts more than an
       // airball, and the game should say so
       const rims = s.touches.filter((t) => t.kind === "rim").length;
@@ -2221,9 +2242,16 @@ export function Hoop() {
           } else {
             powerNotchRef.current = -1; // release here is a free bail-out
           }
-        } else if (bestDepthRef.current === 0 && levelIdxRef.current === 0) {
-          // first-timer: nothing on screen explains the gesture — this
-          // does. 12px, and clamped so it can't run off a narrow phone.
+        } else if (
+          showGestureHint(
+            bestDepthRef.current,
+            lastAimRef.current !== null,
+            levelIdxRef.current,
+          )
+        ) {
+          // first-timer, or anyone's first pull of the session — gone
+          // after the session's first shot. 12px, and clamped so it
+          // can't run off a narrow phone.
           const hint = "drag back anywhere — let go to shoot";
           ctx.font = `12px ui-monospace, Menlo, monospace`;
           const hx = Math.min(bx + 16, W - ctx.measureText(hint).width - 8);

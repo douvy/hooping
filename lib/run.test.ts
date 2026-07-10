@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { describeMiss, isBucketMilestone, parseRun } from "./run.ts";
+import { describeMiss, isBucketMilestone, parseRun, showGestureHint } from "./run.ts";
 
 test("parseRun: fresh player on empty or garbage", () => {
   const fresh = { run: 1, bestDepth: 0, buckets: 0, wins: 0, closest: [] };
@@ -73,6 +73,18 @@ test("describeMiss: named in ball-widths, silent past three balls", () => {
   assert.equal(describeMiss(2.9 * D, "long"), "long by three balls");
   assert.equal(describeMiss(3.5 * D, "short"), null); // the silent brick
   assert.equal(describeMiss(Infinity, "short"), null); // never got airborne near it
+});
+
+test("showGestureHint: first-timers always on L1, veterans once per session", () => {
+  // first-timer keeps the hint on level 1 even after missed shots
+  assert.equal(showGestureHint(0, false, 0), true);
+  assert.equal(showGestureHint(0, true, 0), true);
+  // veteran's fresh session: re-taught until the first shot, then gone
+  assert.equal(showGestureHint(4, false, 0), true);
+  assert.equal(showGestureHint(4, true, 0), false);
+  // never shows past level 1
+  assert.equal(showGestureHint(0, false, 2), false);
+  assert.equal(showGestureHint(4, false, 3), false);
 });
 
 test("isBucketMilestone: sparse rungs then every thousand", () => {

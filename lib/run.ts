@@ -58,6 +58,18 @@ export function isBucketMilestone(n: number): boolean {
   return [50, 100, 250, 500].includes(n) || (n >= 1000 && n % 1000 === 0);
 }
 
+/** The gesture hint ("drag back anywhere") shows on level 1 to anyone
+ * who's never cleared a level, and to everyone until their session's
+ * first shot — the "anywhere" is the part veterans forget: they anchor
+ * on the ball at the screen edge and run out of thumb room. */
+export function showGestureHint(
+  bestDepth: number,
+  shotThisSession: boolean,
+  levelIdx: number,
+): boolean {
+  return (bestDepth === 0 || !shotThisSession) && levelIdx === 0;
+}
+
 /** The autopsy line: a miss named in ball-widths, the unit a shooter
  * can feel. Bricks past three balls get silence — a blowout needs no
  * narration, and "off by nine balls" would read as mockery. */
