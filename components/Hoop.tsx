@@ -1424,6 +1424,8 @@ export function Hoop() {
     sy: number;
     dx: number;
     dy: number;
+    /** trailing drag samples — the release stabilizer's evidence */
+    hist: { t: number; x: number; y: number }[];
   } | null>(null);
   const trailRef = useRef<{ x: number; y: number }[]>([]);
   const ballRotRef = useRef(0); // the leather spins in flight
@@ -2553,8 +2555,8 @@ export function Hoop() {
       const level = LEVELS[levelIdxRef.current];
       const W = canvas.width / dpr;
       const H = canvas.height / dpr;
-      // fit the ACTION SPAN (launch → pole + a step) by both axes and
-      // center it — the ~2m of court behind the pole is physics runway,
+      // fit the ACTION SPAN (a step behind the shooter → a step past the
+      // pole) by both axes — court outside that span is physics runway,
       // not picture, and on a width-limited portrait phone it was costing
       // 25-35% of the zoom and floating the hoop mid-frame. Cropped, the
       // hoop sits near the right edge and everything draws bigger; misses
@@ -2562,14 +2564,26 @@ export function Hoop() {
       // crop a sliver of side margin and the empty sky above 4.7m
       // (ceilings live at 4.4-4.5). The rim is the protagonist — high
       // arcs already leave the frame, and that's drama, not a bug.
-      const spanW = Math.min(level.w, level.rim.x + RIM_GAP + BOARD_OFF + 0.55);
+      // 0.75m behind the launch point covers the shooter exactly: he
+      // stands ~0.33m back (7k in creature units) plus ~0.2m of body,
+      // plus a step of air — the lawn beyond that was pure zoom tax
+      const x0 = Math.max(0, level.launch.x - 0.75);
+      const spanEnd = Math.min(
+        level.w,
+        level.rim.x + RIM_GAP + BOARD_OFF + 0.55,
+      );
+      const spanW = spanEnd - x0;
       const scale = Math.min(W / (spanW * 0.93), (H - 20) / 4.7);
-      const ox = (W - spanW * scale) / 2;
+      // the 0.93 overzoom crops ~7% of the span — ALL of it from behind
+      // the board. The shooter keeps his fixed breathing room; the dead
+      // runway behind the glass eats the difference. Wide screens still
+      // center the span.
+      const ox = Math.max((W - spanW * scale) / 2, 0) - x0 * scale;
       // wide screens pin the floor near the bottom — leaving room for the
-      // 16px asphalt cap plus a band of grass; tall screens center the
-      // court so sky and floor split the leftover instead of the hoop
-      // sinking to the bottom of a portrait phone
-      const floorY = Math.min(H - 32, (H + level.h * scale) / 2);
+      // 16px asphalt cap plus a band of grass; tall screens sit the court
+      // LOW (70/30 sky over grass) so the arc gets the headroom and the
+      // ball plays in the thumb zone instead of mid-air over dead lawn
+      const floorY = Math.min(H - 32, 0.7 * H + 0.3 * level.h * scale);
       const sx = (x: number) => ox + x * scale;
       const sy = (y: number) => floorY - y * scale;
       // the ball's drawn radius — 20% over physics truth. The physics ball
@@ -3974,6 +3988,7 @@ export function Hoop() {
       sy: e.clientY,
       dx: e.clientX,
       dy: e.clientY,
+      hist: [{ t: performance.now(), x: e.clientX, y: e.clientY }],
     };
   };
 
@@ -3982,6 +3997,9 @@ export function Hoop() {
     if (!d || e.pointerId !== d.id) return;
     d.dx = e.clientX;
     d.dy = e.clientY;
+    const t = performance.now();
+    d.hist.push({ t, x: e.clientX, y: e.clientY });
+    while (d.hist.length > 1 && t - d.hist[0].t > 140) d.hist.shift();
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
@@ -3994,6 +4012,34 @@ export function Hoop() {
     // leave dx/dy frames stale and fire a shot the player bailed on
     d.dx = e.clientX;
     d.dy = e.clientY;
+    // release stabilizer: a thumb peeling off glass rolls its contact
+    // point a few px, and that roll lands straight in the aim (sim:
+    // it's most of the mobile σ). If the trailing ~90ms of drag stayed
+    // inside a tight circle the player was HOLDING an aim, not
+    // flicking — shoot from the settled average, not the liftoff
+    // smudge. A real flick blows past the spread gate and keeps its
+    // raw release. A mouse settles at zero velocity, so desktop aim
+    // averages to itself.
+    const t = performance.now();
+    const w = d.hist.filter((h) => t - h.t <= 90);
+    w.push({ t, x: e.clientX, y: e.clientY });
+    if (w.length >= 3) {
+      let mx = 0;
+      let my = 0;
+      for (const h of w) {
+        mx += h.x;
+        my += h.y;
+      }
+      mx /= w.length;
+      my /= w.length;
+      let spread = 0;
+      for (const h of w)
+        spread = Math.max(spread, Math.hypot(h.x - mx, h.y - my));
+      if (spread < 12) {
+        d.dx = mx;
+        d.dy = my;
+      }
+    }
     // an unarmed pull is not a shot — release is a free bail-out.
     // Covers stray taps, regretted angles eased back to the ball, and
     // cancel flicks that overshoot the origin.
