@@ -10,7 +10,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { track } from "@vercel/analytics";
-import { Volume2, VolumeX } from "lucide-react";
 import VerdictCard, { type VerdictApi } from "./VerdictCard";
 import {
   BALL_R,
@@ -4395,49 +4394,189 @@ export function Hoop() {
 
   return (
     <div className="relative flex h-dvh flex-col">
-      {/* readout bar — the only chrome above the game: a deep slate blue,
-          darker than every sky */}
+      {/* readout bar — the only chrome above the game, drawn with the
+          scene's own pen: the one ink, darker than every sky, with the
+          ball's mustard as the single hot line under it — the scoreboard
+          hangs over the court on the same leather the game is played with */}
       <div
-        className="flex items-center justify-between border-b pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]"
-        style={{ backgroundColor: "#4a5f7d", borderColor: darken("#4a5f7d", 0.8) }}
+        className="flex items-center justify-between border-b-2 pb-2.5 pt-[calc(0.625rem+env(safe-area-inset-top))] pl-[max(1rem,env(safe-area-inset-left))] pr-[max(1rem,env(safe-area-inset-right))]"
+        style={{ backgroundColor: INK, borderColor: THEME.ball }}
       >
-        <div className="flex items-baseline gap-4">
-          <h1 className="font-display text-base font-semibold text-[#fdfaf2]">Hooping</h1>
-          {/* the ladder — made levels in ink, the live one in ball orange */}
-          <span className="flex items-center gap-[5px]" aria-hidden>
+        <div className="flex items-center gap-4">
+          {/* the logo — the favicon's ball beside the wordmark, one paper
+              word with the leather to its left */}
+          <h1 className="flex items-center gap-1.5 font-display text-base font-semibold text-[#fdfaf2]">
+            <svg viewBox="0 0 32 32" className="h-[15px] w-[15px]" aria-hidden>
+              <defs>
+                <clipPath id="hdr-ball">
+                  <circle cx="16" cy="16" r="14" />
+                </clipPath>
+              </defs>
+              <circle cx="16" cy="16" r="14" fill={THEME.ball} />
+              <g
+                clipPath="url(#hdr-ball)"
+                stroke={INK}
+                strokeWidth="1.8"
+                fill="none"
+              >
+                <path d="M2 16 Q16 21 30 16" />
+                <path d="M16 2 Q21 16 16 30" />
+                <circle cx="-5" cy="16" r="14.7" />
+                <circle cx="37" cy="16" r="14.7" />
+              </g>
+            </svg>
+            Hooping
+          </h1>
+          {/* the ladder — six hand-drawn pennants on a rope, the game's
+              own reward object: you hoist one per cleared level, so the
+              header hangs the same six. Made flags wear ball mustard
+              with the warm shade half (Law 2 — outlines can't read on
+              the ink bar) and POP in on their own beat; the live one
+              hangs in rim brick and sways like the champion's banner;
+              the rest wait as faint empty outlines. */}
+          <span className="relative flex items-start gap-[6px]" aria-hidden>
+            <span className="absolute left-[-3px] right-[-3px] top-[1px] h-[1.5px] rounded bg-[#fdfaf2]/30" />
             {LEVELS.map((l, i) => {
               const made = i < levelIdx || phase === "beat";
               const current = i === levelIdx && phase !== "beat";
               return (
-                <span
+                <svg
                   key={l.id}
-                  className={`h-3 w-1 rounded-full ${
-                    made ? "bg-accent" : current ? "bg-accent-negative" : "bg-[#fdfaf2]/40"
+                  viewBox="0 0 10 13"
+                  className={`h-[13px] w-[10px] origin-top ${
+                    made
+                      ? "animate-[letter-pop_0.35s_ease-out_both]"
+                      : current
+                        ? "animate-[banner-sway_2.4s_ease-in-out_infinite]"
+                        : ""
                   }`}
-                />
+                  style={{
+                    animationDelay: made ? `${i * 70}ms` : undefined,
+                    // hand-hung: each flag holds its own slight tilt
+                    rotate: made ? `${[-3, 2, -2, 3, -1.5, 2.5][i]}deg` : undefined,
+                  }}
+                >
+                  {made || current ? (
+                    <>
+                      <path
+                        d="M1 1 H9 L5 12 Z"
+                        fill={current ? THEME.rim : THEME.ball}
+                      />
+                      <path
+                        d="M5 1 H9 L5 12 Z"
+                        fill={shade(current ? THEME.rim : THEME.ball)}
+                      />
+                    </>
+                  ) : (
+                    <path
+                      d="M1 1 H9 L5 12 Z"
+                      fill="none"
+                      stroke="#fdfaf2"
+                      strokeOpacity="0.35"
+                      strokeWidth="1.3"
+                      strokeLinejoin="round"
+                    />
+                  )}
+                </svg>
               );
             })}
           </span>
-          <span className="font-mono text-xs text-[#fdfaf2]/70 max-sm:hidden">
-            {levelIdx + 1} / {LEVELS.length}
+          <span className="flex items-baseline gap-1.5 rounded-[3px] border border-[#fdfaf2]/15 px-2 py-[5px] font-mono leading-none max-sm:hidden">
+            <span className="text-[9px] tracking-[0.14em] text-[#fdfaf2]/45">
+              LVL
+            </span>
+            <span className="text-[11px] text-[#fdfaf2]/90">
+              {levelIdx + 1}/{LEVELS.length}
+            </span>
           </span>
         </div>
-        <div className="flex items-center gap-4 font-mono text-xs text-[#fdfaf2]/70">
-          {/* two records: the daily chase next to the career mark. Fresh
-              players get one dash — no scoreboard before the first make. */}
-          <span>
-            {bestDepth > 0
-              ? `TODAY ${todayDepth} · BEST ${bestDepth}/${LEVELS.length}`
-              : "BEST —"}
+        {/* the records as scoreboard cells — quiet label, loud number —
+            and the sound toggle wearing the same cell so it reads as a
+            button. Fresh players get one dash: no scoreboard before the
+            first make. */}
+        <div className="flex items-center gap-2 font-mono leading-none">
+          {bestDepth > 0 && (
+            <span className="flex items-baseline gap-1.5 rounded-[3px] border border-[#fdfaf2]/15 px-2 py-[5px]">
+              <span className="text-[9px] tracking-[0.14em] text-[#fdfaf2]/45">
+                TODAY
+              </span>
+              <span className="text-[11px] text-[#fdfaf2]/90">{todayDepth}</span>
+            </span>
+          )}
+          <span className="flex items-baseline gap-1.5 rounded-[3px] border border-[#fdfaf2]/15 px-2 py-[5px]">
+            <span className="text-[9px] tracking-[0.14em] text-[#fdfaf2]/45">
+              BEST
+            </span>
+            <span className="text-[11px] text-[#fdfaf2]/90">
+              {bestDepth > 0 ? `${bestDepth}/${LEVELS.length}` : "—"}
+            </span>
           </span>
+          {/* the sound knob — a drawn object, not a UI glyph: rim-brick
+              rounded square wearing the ink outline and the warm shade,
+              like a dial on the back-room TV. Muted, the set goes cold
+              concrete and the waves stop. Springy on touch. */}
           <button
             onClick={toggleSound}
-            // -m/p: a finger-sized hit area around a 13px icon, no layout shift
-            className="-m-2 flex items-center p-2 hover:text-[#fdfaf2]"
+            // before:-inset-2: a finger-sized hit area past the small knob
+            className="relative flex items-center transition-transform duration-100 before:absolute before:-inset-2 before:content-[''] hover:-rotate-6 hover:scale-110 active:scale-90"
             aria-pressed={sndOn}
             aria-label="sound"
           >
-            {sndOn ? <Volume2 size={13} aria-hidden /> : <VolumeX size={13} aria-hidden />}
+            <svg viewBox="0 0 26 26" className="h-[23px] w-[23px]" aria-hidden>
+              <defs>
+                <clipPath id="hdr-knob">
+                  <rect x="2" y="2" width="22" height="22" rx="6.5" />
+                </clipPath>
+              </defs>
+              <rect
+                x="2"
+                y="2"
+                width="22"
+                height="22"
+                rx="6.5"
+                fill={sndOn ? THEME.rim : THEME.concrete}
+              />
+              {/* the warm hard shade along the lower-right, Law 2 */}
+              <path
+                d="M24 8 v16 h-16 q10 2 14-2 t2-14 z"
+                fill={shade(sndOn ? THEME.rim : THEME.concrete)}
+                clipPath="url(#hdr-knob)"
+              />
+              <rect
+                x="2"
+                y="2"
+                width="22"
+                height="22"
+                rx="6.5"
+                fill="none"
+                stroke={INK}
+                strokeWidth="2"
+              />
+              {/* the little paper speaker cone */}
+              <path
+                d="M7.5 10.5 h2.8 l3.7-3 v11 l-3.7-3 h-2.8 z"
+                fill="#fdfaf2"
+                stroke={INK}
+                strokeWidth="1.2"
+                strokeLinejoin="round"
+              />
+              {sndOn ? (
+                <g
+                  stroke="#fdfaf2"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  fill="none"
+                >
+                  <path d="M16.8 10.2 a4 4 0 0 1 0 5.6" />
+                  <path d="M19.3 8.4 a6.6 6.6 0 0 1 0 9.2" />
+                </g>
+              ) : (
+                <g stroke="#fdfaf2" strokeWidth="1.6" strokeLinecap="round">
+                  <path d="M16.5 10.5 l4.5 5" />
+                  <path d="M21 10.5 l-4.5 5" />
+                </g>
+              )}
+            </svg>
           </button>
         </div>
       </div>
