@@ -315,6 +315,10 @@ export function Hoop() {
   // per-level closest miss in meters, persisted — the record you can
   // break while losing. Feeds the death card's "your closest yet".
   const closestRef = useRef<(number | null)[]>([]);
+  // practice balls left on the level that killed the run — 0 = not
+  // practicing. Three per death, one session per card, a make ends it
+  // early: enough to read the shot, not enough to groove it for free.
+  const practiceRef = useRef(0);
 
   // HUD state
   const [phase, setPhase] = useState<Phase>("aim");
@@ -323,6 +327,8 @@ export function Hoop() {
   const [last, setLast] = useState<LastShot | null>(null);
   const [sndOn, setSndOn] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [practiceLeft, setPracticeLeft] = useState(0);
+  const [practiced, setPracticed] = useState(false); // this death's session, spent
 
   const setPhaseBoth = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -405,6 +411,33 @@ export function Hoop() {
 
   const finishShot = useCallback(() => {
     const s = shotRef.current!.state;
+    // practice ball — nothing counts: no records, no buckets, no
+    // analytics, no verdict. A make ends the session (the answer's
+    // found — go execute it); misses loop straight back to aim until
+    // the rack is empty, then the death card returns.
+    if (practiceRef.current > 0) {
+      practiceRef.current -= 1;
+      const over = s.made || practiceRef.current === 0;
+      if (over) practiceRef.current = 0;
+      setPracticeLeft(practiceRef.current);
+      const missPop = s.made ? null : describeMiss(s.missBy, s.missSide);
+      if (over) {
+        setPhaseBoth("dead"); // back to the verdict card
+      } else {
+        resetForAim();
+        setPhaseBoth("aim");
+      }
+      // the autopsy, posted where the next ball gets aimed — reading
+      // these against a live retry is the whole point of the gym
+      if (missPop) {
+        popRef.current = {
+          text: missPop.toUpperCase(),
+          at: performance.now() / 1000,
+          color: THEME.paper,
+        };
+      }
+      return;
+    }
     // the record you can break while losing: a miss closer than every
     // previous miss on this level. Only counts as news when a record
     // existed — the first miss anywhere is just a data point.
@@ -475,8 +508,27 @@ export function Hoop() {
       sound.plunk(); // the run dies with a low dead thud
       navigator.vibrate?.(60);
       eventAtRef.current = performance.now() / 1000;
+      setPracticed(false); // a fresh death card carries a fresh gym pass
       setPhaseBoth("dead");
     }
+  }, [setPhaseBoth]);
+
+  // the death card's gym pass: three balls on the level that killed
+  // you. Practice finds the answer, the ghost arrow remembers it, the
+  // next run executes it — the run itself stays one shot per level.
+  const startPractice = useCallback(() => {
+    setPracticed(true);
+    practiceRef.current = 3;
+    setPracticeLeft(3);
+    resetForAim();
+    setPhaseBoth("aim");
+  }, [setPhaseBoth]);
+
+  // bail out mid-session — back to the card, the pass stays spent
+  const endPractice = useCallback(() => {
+    practiceRef.current = 0;
+    setPracticeLeft(0);
+    setPhaseBoth("dead");
   }, [setPhaseBoth]);
 
   // --- the creature — flat cartoon: outlined head under dark spiky
@@ -1326,81 +1378,96 @@ export function Hoop() {
           const depth = levelIdxRef.current + 1;
           sound.swish(depth); // deeper buckets ring higher
           navigator.vibrate?.([20, 30, 40]);
-          const firstEver = bestDepthRef.current === 0; // the conversion moment
+          // a practice make deposits nothing — no pennant, no bucket,
+          // no streak. The pop names the actual prize: this exact
+          // pull, executed on a live run.
+          const practice = practiceRef.current > 0;
+          const firstEver = !practice && bestDepthRef.current === 0; // the conversion moment
           // pennants earned this make: a new-best hangs its level flag, a
           // full clear hangs a gold championship banner — beat it for the
           // first time and both go up. Mark the ceremony; the rafters
           // block raises whatever's beyond ropeBase.
-          const isWin = depth === LEVELS.length;
-          if (depth > bestDepthRef.current || isWin) {
-            ropeBaseRef.current = bestDepthRef.current + winsRef.current;
-            hoistAtRef.current = now;
-            snapCountRef.current = 0;
-            // the flag is earned HERE — launch it from the net so the
-            // eye can ride it up to the rafters
-            hoistFromRef.current = {
-              x: sx(level.rim.x + RIM_GAP / 2),
-              y: sy(level.rim.y) + 10,
-            };
+          const isWin = !practice && depth === LEVELS.length;
+          if (practice) {
+            popRef.current = { text: "THAT'S THE ONE", at: now, color: YELLOW };
           } else {
-            // already-flagged level: that flag waves back at the swish —
-            // every bucket touches the rafters, not just the new bests
-            waveAtRef.current = now;
-            waveIdxRef.current = depth - 1;
+            if (depth > bestDepthRef.current || isWin) {
+              ropeBaseRef.current = bestDepthRef.current + winsRef.current;
+              hoistAtRef.current = now;
+              snapCountRef.current = 0;
+              // the flag is earned HERE — launch it from the net so the
+              // eye can ride it up to the rafters
+              hoistFromRef.current = {
+                x: sx(level.rim.x + RIM_GAP / 2),
+                y: sy(level.rim.y) + 10,
+              };
+            } else {
+              // already-flagged level: that flag waves back at the swish —
+              // every bucket touches the rafters, not just the new bests
+              waveAtRef.current = now;
+              waveIdxRef.current = depth - 1;
+            }
+            if (depth > bestDepthRef.current) {
+              bestDepthRef.current = depth;
+              newBestRef.current = true;
+              if (!isWin) sound.fanfare(); // deeper than ever before
+            }
+            if (isWin) {
+              winsRef.current += 1;
+              sound.finale(); // the flagpole — outranks every other jingle
+            }
+            // the career meter — every make anywhere deposits one, so even a
+            // run that dies on level 2 paid into something permanent
+            bucketsRef.current += 1;
+            const milestone = isBucketMilestone(bucketsRef.current);
+            if (milestone && !newBestRef.current && !isWin) sound.fanfare();
+            // name the shot
+            const walled = s.touches.some((t) => t.kind === "wall");
+            const banked = s.touches.some((t) => t.kind === "board");
+            const rims = s.touches.filter((t) => t.kind === "rim").length;
+            // clean make = the SWISH branch below; streak survives across
+            // games so the 800th layup still has something to protect
+            const li = levelIdxRef.current;
+            const clean = !walled && rims < 2 && !banked;
+            swishStreakRef.current[li] = clean ? (swishStreakRef.current[li] ?? 0) + 1 : 0;
+            const streak = swishStreakRef.current[li];
+            popRef.current = {
+              text:
+                depth === LEVELS.length
+                  ? "GAME WINNER"
+                  : milestone
+                    ? `${bucketsRef.current} BUCKETS`
+                    : firstEver
+                      ? "FIRST BUCKET"
+                      : s.touches.length >= 4
+                        ? "CIRCUS SHOT"
+                        : walled
+                          ? "OFF THE WALL"
+                          : rims >= 2
+                            ? "SHOOTERS SHOOT"
+                            : banked
+                              ? "BANK'S OPEN"
+                              : streak >= 2
+                                ? `SWISH ×${streak}`
+                                : "SWISH",
+              at: now,
+              color:
+                depth === LEVELS.length || newBestRef.current || milestone
+                  ? YELLOW
+                  : PAPER,
+            };
           }
-          if (depth > bestDepthRef.current) {
-            bestDepthRef.current = depth;
-            newBestRef.current = true;
-            if (!isWin) sound.fanfare(); // deeper than ever before
-          }
-          if (isWin) {
-            winsRef.current += 1;
-            sound.finale(); // the flagpole — outranks every other jingle
-          }
-          // the career meter — every make anywhere deposits one, so even a
-          // run that dies on level 2 paid into something permanent
-          bucketsRef.current += 1;
-          const milestone = isBucketMilestone(bucketsRef.current);
-          if (milestone && !newBestRef.current && !isWin) sound.fanfare();
-          // name the shot
-          const walled = s.touches.some((t) => t.kind === "wall");
-          const banked = s.touches.some((t) => t.kind === "board");
-          const rims = s.touches.filter((t) => t.kind === "rim").length;
-          // clean make = the SWISH branch below; streak survives across
-          // games so the 800th layup still has something to protect
-          const li = levelIdxRef.current;
-          const clean = !walled && rims < 2 && !banked;
-          swishStreakRef.current[li] = clean ? (swishStreakRef.current[li] ?? 0) + 1 : 0;
-          const streak = swishStreakRef.current[li];
-          popRef.current = {
-            text:
-              depth === LEVELS.length
-                ? "GAME WINNER"
-                : milestone
-                  ? `${bucketsRef.current} BUCKETS`
-                  : firstEver
-                    ? "FIRST BUCKET"
-                    : s.touches.length >= 4
-                      ? "CIRCUS SHOT"
-                      : walled
-                        ? "OFF THE WALL"
-                        : rims >= 2
-                          ? "SHOOTERS SHOOT"
-                          : banked
-                            ? "BANK'S OPEN"
-                            : streak >= 2
-                              ? `SWISH ×${streak}`
-                              : "SWISH",
-            at: now,
-            color:
-              depth === LEVELS.length || newBestRef.current || milestone
-                ? YELLOW
-                : PAPER,
-          };
           // confetti from the rim — scaled with depth, so a deep make
-          // literally rains more; the first bucket ever gets a parade
+          // literally rains more; the first bucket ever gets a parade.
+          // Practice makes get the level's normal rain, no parades.
           const ccx = level.rim.x + RIM_GAP / 2;
-          const n = depth === LEVELS.length ? 80 : firstEver ? 60 : 24 + depth * 6;
+          const n = practice
+            ? 24
+            : depth === LEVELS.length
+              ? 80
+              : firstEver
+                ? 60
+                : 24 + depth * 6;
           for (let i = 0; i < n; i++) {
             confettiRef.current.push({
               x: ccx,
@@ -3078,23 +3145,37 @@ export function Hoop() {
               </p>
               {/* share is the primary verb only on a win — a death
                   screen's verb is retry, so there it goes ghost. min-w
-                  so the copied swap doesn't jiggle the width. */}
-              <button
-                onClick={shareRun}
-                onPointerDown={(e) => e.stopPropagation()}
-                className={
-                  phase === "beat"
-                    ? "flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
-                    : "flex min-w-24 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
-                }
-              >
-                {copied ? (
-                  <Check size={13} strokeWidth={3} aria-hidden />
-                ) : (
-                  <Share2 size={13} strokeWidth={2.5} aria-hidden />
+                  so the copied swap doesn't jiggle the width. Death
+                  cards seat the gym pass beside it: three free balls on
+                  the shot that killed the run, one session per death —
+                  enough to find the answer, not enough to groove it. */}
+              <div className="flex items-center gap-2.5">
+                {phase === "dead" && !practiced && (
+                  <button
+                    onClick={startPractice}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="flex items-center justify-center rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
+                  >
+                    practice it
+                  </button>
                 )}
-                {copied ? "copied" : "share"}
-              </button>
+                <button
+                  onClick={shareRun}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  className={
+                    phase === "beat"
+                      ? "flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+                      : "flex min-w-24 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
+                  }
+                >
+                  {copied ? (
+                    <Check size={13} strokeWidth={3} aria-hidden />
+                  ) : (
+                    <Share2 size={13} strokeWidth={2.5} aria-hidden />
+                  )}
+                  {copied ? "copied" : "share"}
+                </button>
+              </div>
               <p className="animate-pulse text-[11px] text-muted">
                 tap anywhere to play again
               </p>
@@ -3115,6 +3196,12 @@ export function Hoop() {
           <span>all {LEVELS.length} cleared, one ball</span>
         ) : phase === "dead" && last ? (
           <span>{autopsy(last)}</span>
+        ) : practiceLeft > 0 ? (
+          // the gym — ball count where the stakes line usually sits
+          <span>
+            practice — {practiceLeft} {practiceLeft === 1 ? "ball" : "balls"}{" "}
+            left, nothing counts
+          </span>
         ) : phase === "flying" ? (
           <span>…</span>
         ) : (
@@ -3128,6 +3215,15 @@ export function Hoop() {
           </span>
         )}
         <span className="flex shrink-0 items-center gap-3">
+          {/* mid-practice exit — back to the card, the pass stays spent */}
+          {practiceLeft > 0 && phase === "aim" && (
+            <button
+              onClick={endPractice}
+              className="font-bold underline underline-offset-2"
+            >
+              done <span aria-hidden>→</span>
+            </button>
+          )}
           {/* the career meter — only ever climbs, every run deposits */}
           {buckets > 0 && (
             <span>
