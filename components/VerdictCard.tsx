@@ -397,7 +397,7 @@ export default function VerdictCard({
 
   return (
     <div
-      className="flex w-96 max-w-[94%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-6 py-7 text-center font-mono shadow-[5px_5px_0_rgba(49,45,40,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both] sm:px-8"
+      className="flex w-96 max-w-[94%] flex-col items-center gap-4 rounded-2xl border-[3px] border-foreground bg-background px-6 py-7 text-center font-mono shadow-[5px_5px_0_rgba(58,46,42,0.55)] animate-[verdict-in_0.3s_ease-out_0.15s_both] sm:px-8"
       // mid-ceremony every press belongs to the overlay: it completes
       // the choreography; only then do the buttons come alive
       style={{ pointerEvents: choreoDone ? undefined : "none" }}
@@ -496,7 +496,7 @@ export default function VerdictCard({
             ref={ctaRef}
             onClick={onAdvance}
             onPointerDown={(e) => e.stopPropagation()}
-            className="w-full overflow-hidden rounded-xl border-2 border-foreground bg-well text-foreground shadow-[4px_4px_0_#312d28] transition-[translate,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[5px_5px_0_#312d28] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
+            className="w-full overflow-hidden rounded-xl border-2 border-foreground bg-well text-foreground shadow-[4px_4px_0_#3a2e2a] transition-[translate,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[5px_5px_0_#3a2e2a] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
             style={ctaStyle}
           >
             {nextLevel && (
@@ -542,7 +542,7 @@ export default function VerdictCard({
             ))}
           </h2>
           {/* his note — taped on askew after the banner settles */}
-          <div className="relative w-full rotate-[-2deg] rounded-sm border border-border bg-surface px-4 pb-2 pt-3 shadow-[2px_2px_0_rgba(49,45,40,0.12)] animate-[note-in_0.4s_cubic-bezier(0.34,1.56,0.64,1)_1s_both]">
+          <div className="relative w-full rotate-[-2deg] rounded-sm border border-border bg-surface px-4 pb-2 pt-3 shadow-[2px_2px_0_rgba(58,46,42,0.12)] animate-[note-in_0.4s_cubic-bezier(0.34,1.56,0.64,1)_1s_both]">
             <div
               aria-hidden
               className="absolute -top-2 left-1/2 h-4 w-10 -translate-x-1/2 rotate-[4deg] rounded-[1px] bg-[#eae2cb]/80"
@@ -614,7 +614,7 @@ export default function VerdictCard({
           className={
             dead
               ? "flex min-w-24 items-center justify-center gap-1.5 rounded-lg border border-border px-4 py-2 text-xs font-bold text-muted transition-colors hover:border-foreground hover:text-foreground"
-              : "flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#312d28] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#312d28] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
+              : "flex min-w-28 items-center justify-center gap-2 rounded-lg border-2 border-foreground bg-[#dfa63f] px-5 py-2.5 text-xs font-bold text-foreground shadow-[3px_3px_0_#3a2e2a] transition-[transform,box-shadow] duration-100 ease-out hover:-translate-x-px hover:-translate-y-px hover:shadow-[4px_4px_0_#3a2e2a] active:translate-x-[3px] active:translate-y-[3px] active:shadow-none"
           }
         >
           {copied ? (

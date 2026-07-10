@@ -4,8 +4,9 @@
 // app/globals.css are drawn from the same family; change one, check both.
 
 export const THEME = {
-  /** the thick cartoon line everything wears — also the text ink */
-  outline: "#312d28",
+  /** the one ink — every line in the scene is this warm dark umber,
+   * never pure black, never gray. Also the text ink. */
+  outline: "#3a2e2a",
   /** clouds, the board, the net, painted lines */
   paper: "#fdfaf2",
   /** the ball — flat mustard leather */
@@ -19,8 +20,9 @@ export const THEME = {
   asphalt: "#3a3d42",
   /** the backboard's plank face */
   wood: "#df9a4e",
-  /** the grass the court sits in */
-  grass: "#7ec850",
+  /** the grass the court sits in — nudged golden: the foreground band
+   * lives in the warm zone of the scene's single upper-left light */
+  grass: "#89c94c",
   /** obstacle slabs */
   concrete: "#93a5b8",
   /** the floodlight, and the city's lit windows */
@@ -29,7 +31,7 @@ export const THEME = {
    * blue mop, warm tan skin, white fleece, dark denim legs */
   fur: "#31648e",
   hair: "#293243",
-  face: "#ecb686",
+  face: "#edb078",
   headband: "#3f8fdd",
   /** his hoodie — grey heather fleece */
   hoodie: "#c3c7cb",
@@ -97,3 +99,16 @@ export function darken(hex: string, f: number): string {
 export function withAlpha(hex: string, aa: string): string {
   return hex + aa;
 }
+
+/** The shade face of a lit fill — one step darker AND one step warmer,
+ * hard edge, never gray-darkened. Every two-light object in the scene
+ * (roofs, the hoodie, the ball, the pole) mixes its shade here so the
+ * whole world's shadow physics match. */
+export function shade(hex: string): string {
+  return darken(mix(hex, "#8a4f2c", 0.16), 0.86);
+}
+
+/** The one ground-shadow ink — cool and translucent, shared by every
+ * contact shadow in the scene: pools under verticals, the seam under
+ * the row houses. One color, one direction (lower-right). */
+export const SHADOW = withAlpha(mix(THEME.outline, "#2e4166", 0.5), "2e");

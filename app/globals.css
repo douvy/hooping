@@ -8,11 +8,11 @@
   /* paper — same as THEME.paper */
   --background: #fdfaf2;
   /* the ink — same as THEME.outline */
-  --foreground: #312d28;
+  --foreground: #3a2e2a;
   --surface: #f6f0e2;
   --well: #f1ead8;
   --border: #ddd5c2;
-  --accent: #312d28;
+  --accent: #3a2e2a;
   /* the iron — same as THEME.rim */
   --accent-negative: #c15b4c;
   /* gold, pulled down so it reads as text on paper (THEME.gold family) */
@@ -56,7 +56,7 @@ body {
 
 /* Selection in ink, not browser blue */
 ::selection {
-  background: #312d28;
+  background: #3a2e2a;
   color: #fdfaf2;
 }
 
