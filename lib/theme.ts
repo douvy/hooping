@@ -43,6 +43,16 @@ export const THEME = {
   teal: "#3fd0c5",
 } as const;
 
+/** the one ink, exported bare — new marks reach for INK, not a hex.
+ * Identical to THEME.outline; two names, one value. */
+export const INK = THEME.outline;
+
+/** Law 1's three line tiers, as multiples of a painter's unit — every
+ * stroked line in a band is unit × one of these three, no fourth
+ * weight. The character's contour sits above heavy by law: he's the
+ * loudest object in the scene. */
+export const LINE_WEIGHTS = { heavy: 1.9, med: 1.2, light: 0.7 } as const;
+
 /** one sky per level — afternoon cooling through sunset into night.
  * advancement reads as travel: you started playing at four and you're
  * still out there after dark. */
@@ -100,15 +110,20 @@ export function withAlpha(hex: string, aa: string): string {
   return hex + aa;
 }
 
+/** Law 2's one shade transform: push toward this warm earth, then drop.
+ * Tuning the world's shadow physics is these three numbers. */
+const SHADE_SHIFT = { warm: "#8a4f2c", toward: 0.16, drop: 0.86 } as const;
+
 /** The shade face of a lit fill — one step darker AND one step warmer,
  * hard edge, never gray-darkened. Every two-light object in the scene
  * (roofs, the hoodie, the ball, the pole) mixes its shade here so the
  * whole world's shadow physics match. */
 export function shade(hex: string): string {
-  return darken(mix(hex, "#8a4f2c", 0.16), 0.86);
+  return darken(mix(hex, SHADE_SHIFT.warm, SHADE_SHIFT.toward), SHADE_SHIFT.drop);
 }
 
 /** The one ground-shadow ink — cool and translucent, shared by every
  * contact shadow in the scene: pools under verticals, the seam under
- * the row houses. One color, one direction (lower-right). */
-export const SHADOW = withAlpha(mix(THEME.outline, "#2e4166", 0.5), "2e");
+ * the row houses. One color, one direction (lower-right), one alpha
+ * loud enough to read at 100% zoom. */
+export const SHADOW = withAlpha(mix(INK, "#2e4166", 0.5), "38");

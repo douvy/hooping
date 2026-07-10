@@ -38,7 +38,7 @@ import {
 } from "@/lib/run";
 import { createSpring } from "@/lib/spring";
 import * as sound from "@/lib/sound";
-import { SHADOW, SKIES, THEME, darken, mix, saturate, shade, withAlpha } from "@/lib/theme";
+import { INK, LINE_WEIGHTS, SHADOW, SKIES, THEME, darken, mix, saturate, shade, withAlpha } from "@/lib/theme";
 
 // Layout is the Doodle Jump deal: one thin readout bar, one thin status
 // line, and every other pixel is the game. The hand-touched detail lives
@@ -200,13 +200,12 @@ function drawSkyline(
   opts: { party?: boolean; hScale?: number; gaze?: boolean } = {},
 ) {
   const u = skyU(floorY);
-  // Law 1 — the street band's three line weights. Heavy holds object
-  // silhouettes, medium the major interior divisions, light the detail
-  // marks. No fourth weight exists; the character's contour (in
-  // drawCreature) sits above wHeavy by law — he's the loudest object.
-  const wHeavy = 1.9 * u;
-  const wMed = 1.2 * u;
-  const wLight = 0.7 * u;
+  // Law 1 — the street band's three line weights, the tokenized tiers
+  // scaled by this band's unit. Heavy holds object silhouettes, medium
+  // the major interior divisions, light the detail marks.
+  const wHeavy = LINE_WEIGHTS.heavy * u;
+  const wMed = LINE_WEIGHTS.med * u;
+  const wLight = LINE_WEIGHTS.light * u;
   const hS = opts.hScale ?? 1;
   const party = opts.party ?? false;
   const gaze = opts.gaze ?? false; // a ball is in the air — the cat cares
@@ -369,6 +368,10 @@ function drawSkyline(
     const wtr = darken(saturate(sky, 1.35), 0.8);
     ctx.fillStyle = wtr;
     ctx.fillRect(0, waterTop, W, waterBot - waterTop);
+    // the near-shore edge — one darker line where the water meets our
+    // bank, the river's third and last mark
+    ctx.fillStyle = darken(wtr, 0.85);
+    ctx.fillRect(0, waterBot - 1.6 * u, W, 1.6 * u);
     // lamp smears — the far city's windows fall in and wobble; three
     // columns, no more — the water stays quiet
     if (litFrac > 0) {
@@ -494,7 +497,7 @@ function drawSkyline(
       ctx.fillStyle = mix(body, THEME.gold, 0.5 * glow);
       ctx.fillRect(tx - tw / 2, top, 4 * u, th);
     }
-    ctx.strokeStyle = THEME.outline;
+    ctx.strokeStyle = INK;
     ctx.lineJoin = "round";
     ctx.lineWidth = wHeavy;
     ctx.strokeRect(tx - tw / 2, top, tw, th);
@@ -551,7 +554,7 @@ function drawSkyline(
     ctx.beginPath();
     ctx.arc(tx, fy, fr, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = THEME.outline;
+    ctx.strokeStyle = INK;
     ctx.lineWidth = wMed;
     ctx.stroke();
     // the glass — one diagonal paper bar, the reference's screen glare
@@ -572,7 +575,7 @@ function drawSkyline(
     const hour = 16 + 8 * night; // the ladder's clock
     const ha = ((hour % 12) / 12) * Math.PI * 2 - Math.PI / 2;
     const ma = (hour % 1) * Math.PI * 2 - Math.PI / 2;
-    ctx.strokeStyle = THEME.outline;
+    ctx.strokeStyle = INK;
     ctx.lineWidth = wMed;
     ctx.lineCap = "round";
     ctx.beginPath();
@@ -634,7 +637,7 @@ function drawSkyline(
     }
     // the silhouette's ink — the wall wears the heavy line; the roof
     // fill will eat the top edge under its eaves, which is correct
-    ctx.strokeStyle = THEME.outline;
+    ctx.strokeStyle = INK;
     ctx.lineJoin = "round";
     ctx.lineWidth = wHeavy;
     ctx.strokeRect(bx, top, bw, wh);
@@ -863,8 +866,8 @@ function drawSkyline(
           ctx.translate(cx3, top - 5 * u);
           ctx.scale(face * u, u);
           ctx.globalAlpha = 0.85;
-          ctx.fillStyle = THEME.outline;
-          ctx.strokeStyle = THEME.outline;
+          ctx.fillStyle = INK;
+          ctx.strokeStyle = INK;
           ctx.lineCap = "round";
           if (tIn < PAUSE || tIn >= LEAVE) {
             // on the move (or stood taking the roof's measure): long
@@ -970,11 +973,15 @@ function drawSkyline(
     if (hash01(seed + bi * 5 + 11) < 0.45) {
       const cx2 = bx + bw * (0.18 + hash01(seed + bi * 5 + 12) * 0.3);
       const ct = top - (roof < 0.4 ? 18 : roof < 0.72 ? 20 : 12) * u;
-      ctx.fillStyle = darken(fc, 0.72);
+      const cc = darken(fc, 0.72);
+      ctx.fillStyle = cc;
       ctx.fillRect(cx2 - 4 * u, ct, 8 * u, top - ct + 2 * u);
       ctx.fillRect(cx2 - 5.5 * u, ct - 3 * u, 11 * u, 3.5 * u);
+      // its shade flank — even a brick stub carries two lights (Law 2)
+      ctx.fillStyle = shade(cc);
+      ctx.fillRect(cx2 + 1.5 * u, ct, 2.5 * u, top - ct + 2 * u);
       // the stub's ink — an object against the sky wears the line
-      ctx.strokeStyle = THEME.outline;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = wMed;
       ctx.strokeRect(cx2 - 4 * u, ct, 8 * u, top - ct + 2 * u);
       ctx.strokeRect(cx2 - 5.5 * u, ct - 3 * u, 11 * u, 3.5 * u);
@@ -1020,7 +1027,7 @@ function drawSkyline(
       ctx.beginPath();
       ctx.roundRect(bbx - 2 * u, bby - 2 * u, bbw + 4 * u, bbh + 4 * u, 3 * u);
       ctx.fill();
-      ctx.strokeStyle = THEME.outline;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = wMed;
       ctx.stroke();
       ctx.fillStyle = amb(THEME.paper);
@@ -1091,7 +1098,7 @@ function drawSkyline(
       const sy0 = floorY - 16 * u;
       ctx.fillStyle = darken(fc, 0.7);
       ctx.fillRect(sx0 - 1.5 * u, sy0 - 1.5 * u, sw2 + 3 * u, 15 * u);
-      ctx.strokeStyle = THEME.outline;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = wMed;
       ctx.strokeRect(sx0 - 1.5 * u, sy0 - 1.5 * u, sw2 + 3 * u, 15 * u);
       const open = night > 0.1 || party;
@@ -1101,7 +1108,7 @@ function drawSkyline(
       ctx.globalAlpha = 1;
       // mullions splitting the glass into panes — detail marks, the
       // light line
-      ctx.strokeStyle = THEME.outline;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = wLight;
       ctx.beginPath();
       for (let m = 1; m < 3; m++) {
@@ -1137,7 +1144,7 @@ function drawSkyline(
       }
       // one line around the cloth — the awning is a near object and
       // wears the ink like everything else on the street
-      ctx.strokeStyle = THEME.outline;
+      ctx.strokeStyle = INK;
       ctx.lineWidth = wMed;
       ctx.beginPath();
       ctx.moveTo(ax0, ay);
@@ -1147,6 +1154,10 @@ function drawSkyline(
       }
       ctx.closePath();
       ctx.stroke();
+      // the cloth's thrown shadow — the one SHADOW ink banded on the
+      // glass under the scallops, pushed right like every shadow (Law 3)
+      ctx.fillStyle = SHADOW;
+      ctx.fillRect(ax0 + 3 * u, ay + ah + stw / 2, aw - 3 * u, 2 * u);
     }
 
     // row houses touch; an alley now and then shows the layer behind —
@@ -1177,7 +1188,7 @@ function drawSkyline(
     ctx.fill();
     ctx.fillStyle = amb("#6b4a34");
     ctx.fillRect(tr.x - 1.8 * u, floorY - th2 - 2 * u, 3.6 * u, th2 + 2 * u);
-    ctx.strokeStyle = THEME.outline;
+    ctx.strokeStyle = INK;
     ctx.lineWidth = wMed;
     ctx.strokeRect(tr.x - 1.8 * u, floorY - th2 - 2 * u, 3.6 * u, th2 + 2 * u);
     const lit = amb("#7fcb96");
@@ -1195,7 +1206,7 @@ function drawSkyline(
     // the fills laid over: the fill eats the interior ink and leaves
     // one heavy line around the union, which is how a crayon tree gets
     // a single outline out of five circles
-    ctx.strokeStyle = THEME.outline;
+    ctx.strokeStyle = INK;
     ctx.lineWidth = wHeavy * 2;
     ctx.beginPath();
     for (const pass of passes) {
@@ -1249,7 +1260,7 @@ function drawSkyline(
       const sag = (p1.x - p0.x) * 0.14;
       const cxm = (p0.x + p1.x) / 2;
       const cym = (p0.y + p1.y) / 2 + 2 * sag; // quadratic control: mid sags by `sag`
-      ctx.strokeStyle = withAlpha(THEME.outline, "59");
+      ctx.strokeStyle = withAlpha(INK, "59");
       ctx.lineWidth = 1.2 * u;
       ctx.beginPath();
       ctx.moveTo(p0.x, p0.y);
@@ -1276,7 +1287,7 @@ function drawSkyline(
           ctx.fillStyle = THEME.lamp;
           ctx.globalAlpha = lampA * (0.75 + 0.25 * Math.sin(now * 1.9 + i * 2.4));
         } else {
-          ctx.fillStyle = withAlpha(THEME.outline, "66");
+          ctx.fillStyle = withAlpha(INK, "66");
         }
         ctx.beginPath();
         ctx.arc(gx, gy, (on ? 2.2 : 1.6) * u, 0, Math.PI * 2);
@@ -2468,9 +2479,12 @@ export function Hoop() {
       ctx.stroke();
     }
     ctx.restore();
-    // re-ink the leather over the clipped edges
+    // re-ink the leather over the clipped edges — a permanent step up
+    // in weight, the motion-audit fix: the mustard fill carries the
+    // ball over dark bands and this ink carries it over the sunset
+    // skies it nearly matches, so one edge always reads at any altitude
     ctx.strokeStyle = OUTLINE;
-    ctx.lineWidth = Math.max(1.2, r * 0.1);
+    ctx.lineWidth = Math.max(2, r * 0.13);
     ctx.beginPath();
     ctx.arc(bx, by, r, 0, Math.PI * 2);
     ctx.stroke();
@@ -3322,23 +3336,31 @@ export function Hoop() {
       const tr = trailRef.current;
       if (tr.length > 1 && ph !== "aim") {
         ctx.lineCap = "round";
-        const layers: readonly (readonly [string, number])[] =
+        // every ladder opens with a faint ink spine under the color —
+        // the motion-audit fix: warm trail colors sink into the sunset
+        // skies, and the spine keeps the arc legible over every band
+        const layers: readonly (readonly [string, number, number])[] =
           heat >= 4
             ? [
-                [THEME.rim, 7],
-                [YELLOW, 3],
+                [INK, 8.5, 0.35],
+                [THEME.rim, 7, 1],
+                [YELLOW, 3, 1],
               ]
             : heat >= 2
               ? [
-                  [YELLOW, 5.5],
-                  [MUSTARD, 3],
+                  [INK, 7, 0.35],
+                  [YELLOW, 5.5, 1],
+                  [MUSTARD, 3, 1],
                 ]
-              : [[MUSTARD, 3]];
-        for (const [col, lw] of layers) {
+              : [
+                  [INK, 4.5, 0.35],
+                  [MUSTARD, 3, 1],
+                ];
+        for (const [col, lw, aMul] of layers) {
           ctx.strokeStyle = col;
           ctx.lineWidth = lw;
           for (let i = 1; i < tr.length; i++) {
-            ctx.globalAlpha = (i / tr.length) * 0.45;
+            ctx.globalAlpha = (i / tr.length) * 0.45 * aMul;
             ctx.beginPath();
             ctx.moveTo(sx(tr[i - 1].x), sy(tr[i - 1].y));
             ctx.lineTo(sx(tr[i].x), sy(tr[i].y));
@@ -3398,7 +3420,7 @@ export function Hoop() {
         ctx.stroke();
         ctx.lineCap = "butt";
         ctx.fillStyle = THEME.face;
-        ctx.strokeStyle = THEME.outline;
+        ctx.strokeStyle = INK;
         ctx.lineWidth = Math.max(1.2, k * 0.45);
         ctx.beginPath();
         ctx.ellipse(bx - 0.4 * k, by + ballR * 0.92, 1.55 * k, 0.85 * k, 0.35, 0, Math.PI * 2);
@@ -3646,10 +3668,18 @@ export function Hoop() {
           const hint = "drag back anywhere — let go to shoot";
           ctx.font = `12px ui-monospace, Menlo, monospace`;
           const hx = Math.min(bx + 16, W - ctx.measureText(hint).width - 8);
-          ctx.fillStyle = OUTLINE;
           ctx.globalAlpha = 0.6 + 0.3 * Math.sin(now * 3);
+          // a paper halo under the ink — the hint crosses facades that
+          // go near-ink after dark, and text is the one mark that must
+          // never lose to its band
+          ctx.strokeStyle = PAPER;
+          ctx.lineWidth = 3;
+          ctx.lineJoin = "round";
+          ctx.strokeText(hint, hx, by - 16);
+          ctx.fillStyle = OUTLINE;
           ctx.fillText(hint, hx, by - 16);
           ctx.globalAlpha = 1;
+          ctx.lineWidth = 1;
           ctx.font = CANVAS_FONT;
         }
       }
@@ -3767,9 +3797,9 @@ export function Hoop() {
           };
           cloth();
           ctx.fill();
-          // the cloth's shade half — one value down on the side away
-          // from the light, so the pennants hang, not float
-          ctx.fillStyle = darken(color, 0.88);
+          // the cloth's shade half — the scene's one shade transform on
+          // the side away from the light, so the pennants hang, not float
+          ctx.fillStyle = shade(color);
           ctx.beginPath();
           if (champ) {
             ctx.moveTo(0, 0);

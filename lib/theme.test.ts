@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { darken, mix, saturate, withAlpha } from "./theme.ts";
+import { INK, LINE_WEIGHTS, SHADOW, THEME, darken, mix, saturate, shade, withAlpha } from "./theme.ts";
 
 test("darken scales each channel, clamped", () => {
   assert.equal(darken("#ffffff", 0.5), "#808080");
@@ -19,6 +19,25 @@ test("mix blends linearly, endpoints exact", () => {
   assert.equal(mix("#000000", "#ffffff", 1), "#ffffff");
   assert.equal(mix("#000000", "#ffffff", 0.5), "#808080");
   assert.equal(mix("#ff0000", "#0000ff", 0.5), "#800080");
+});
+
+test("the system tokens hold — one ink, one shadow, three descending weights", () => {
+  assert.equal(INK, THEME.outline);
+  assert.match(SHADOW, /^#[0-9a-f]{8}$/); // translucent by construction
+  assert.ok(LINE_WEIGHTS.heavy > LINE_WEIGHTS.med);
+  assert.ok(LINE_WEIGHTS.med > LINE_WEIGHTS.light);
+});
+
+test("shade darkens toward warm, never gray — snapshot of the one transform", () => {
+  assert.equal(shade(THEME.wood), "#b47a3f");
+  assert.equal(shade(THEME.hoodie), "#a09b99");
+  assert.equal(shade(THEME.concrete), "#7e828b");
+  // darker than the lit face for every mid-tone in the palette
+  const lum = (h: string) =>
+    [1, 3, 5].reduce((s, i) => s + parseInt(h.slice(i, i + 2), 16), 0);
+  for (const c of [THEME.wood, THEME.ball, THEME.concrete, THEME.hoodie, THEME.fur, THEME.grass]) {
+    assert.ok(lum(shade(c)) < lum(c), `${c} shade must be darker`);
+  }
 });
 
 test("saturate pushes channels off the mean, clamped; grays are fixed points", () => {
