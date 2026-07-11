@@ -1306,6 +1306,17 @@ const kickSpring = createSpring({ stiffness: 320, damping: 14, mass: 1 });
 const HOIST_DELAY = 0.6;
 const RISE = 0.8;
 
+// one flag color per level, flown by the in-game rafter rope AND the
+// header's ladder — the same six cloths in both places, never drifting
+const FLAG_COLORS = [
+  THEME.rim,
+  THEME.headband,
+  THEME.ball,
+  THEME.grass,
+  THEME.paper,
+  THEME.gold,
+] as const;
+
 interface Aim {
   p: number;
   a: number;
@@ -3731,7 +3742,7 @@ export function Hoop() {
         ctx.stroke();
         // each level flies its own color, left to right — six is the gold;
         // every full clear hangs a swallowtail after them
-        const flags = [THEME.rim, THEME.headband, MUSTARD, THEME.grass, PAPER, YELLOW];
+        const flags = FLAG_COLORS;
         for (let i = 0; i < nFlags; i++) {
           const px2 = ropeL + spacing * 0.7 + i * spacing;
           // where the rope hangs at this x — quadratic from ends at y=0
@@ -4428,17 +4439,19 @@ export function Hoop() {
             Hooping
           </h1>
           {/* the ladder — six hand-drawn pennants on a rope, the game's
-              own reward object: you hoist one per cleared level, so the
-              header hangs the same six. Made flags wear ball mustard
-              with the warm shade half (Law 2 — outlines can't read on
-              the ink bar) and POP in on their own beat; the live one
-              hangs in rim brick and sways like the champion's banner;
-              the rest wait as faint empty outlines. */}
+              own reward object in the game's own colors: each level
+              flies the same cloth here as on the in-game rafter rope
+              (FLAG_COLORS). Made flags fill with their color plus the
+              warm shade half (Law 2 — ink outlines can't read on the
+              ink bar) and POP in on their own beat; the live one hangs
+              hollow in its destined color and sways like the champion's
+              banner; the rest wait as faint empty outlines. */}
           <span className="relative flex items-start gap-[6px]" aria-hidden>
             <span className="absolute left-[-3px] right-[-3px] top-[1px] h-[1.5px] rounded bg-[#fdfaf2]/30" />
             {LEVELS.map((l, i) => {
               const made = i < levelIdx || phase === "beat";
               const current = i === levelIdx && phase !== "beat";
+              const c = FLAG_COLORS[i];
               return (
                 <svg
                   key={l.id}
@@ -4456,23 +4469,17 @@ export function Hoop() {
                     rotate: made ? `${[-3, 2, -2, 3, -1.5, 2.5][i]}deg` : undefined,
                   }}
                 >
-                  {made || current ? (
+                  {made ? (
                     <>
-                      <path
-                        d="M1 1 H9 L5 12 Z"
-                        fill={current ? THEME.rim : THEME.ball}
-                      />
-                      <path
-                        d="M5 1 H9 L5 12 Z"
-                        fill={shade(current ? THEME.rim : THEME.ball)}
-                      />
+                      <path d="M1 1 H9 L5 12 Z" fill={c} />
+                      <path d="M5 1 H9 L5 12 Z" fill={shade(c)} />
                     </>
                   ) : (
                     <path
                       d="M1 1 H9 L5 12 Z"
                       fill="none"
-                      stroke="#fdfaf2"
-                      strokeOpacity="0.35"
+                      stroke={current ? c : "#fdfaf2"}
+                      strokeOpacity={current ? 0.9 : 0.35}
                       strokeWidth="1.3"
                       strokeLinejoin="round"
                     />
