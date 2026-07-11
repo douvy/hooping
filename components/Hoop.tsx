@@ -2578,13 +2578,26 @@ export function Hoop() {
       // STRICT fit, no overzoom — an object flush against a phone's
       // bezel reads as a rendering bug, and both edge objects here are
       // protagonists.
-      const x0 = level.launch.x - 1.5;
+      let x0 = level.launch.x - 1.5;
       const spanEnd = Math.min(
         level.w,
         level.rim.x + RIM_GAP + BOARD_OFF + 0.55,
       );
-      const spanW = spanEnd - x0;
-      const scale = Math.min(W / spanW, (H - 20) / 4.7);
+      let spanW = spanEnd - x0;
+      let scale = Math.min(W / spanW, (H - 20) / 4.7);
+      // ...but the pad is a SCREEN promise, not a world one. On phones
+      // the width-fit shrinks 1.5m to ~70-85px on the wide levels (2-6)
+      // and the shooter reads pinned to the bezel. Guarantee him ~28% of
+      // the width (capped at 125px, which desktop already clears) and
+      // zoom out to buy the room. Level 1's short span clears the floor
+      // as-is, so it keeps its tight framing.
+      const minPad = Math.min(125, 0.32 * W);
+      if (W / spanW <= (H - 20) / 4.7 && 1.5 * scale < minPad) {
+        const rest = spanEnd - level.launch.x;
+        x0 = level.launch.x - (rest * minPad) / (W - minPad);
+        spanW = spanEnd - x0;
+        scale = Math.min(W / spanW, (H - 20) / 4.7);
+      }
       const ox = (W - spanW * scale) / 2 - x0 * scale;
       // wide screens pin the floor near the bottom — leaving room for the
       // 16px asphalt cap plus a band of grass; tall screens sit the court
