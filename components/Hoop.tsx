@@ -648,11 +648,21 @@ function drawSkyline(
       ctx.lineWidth = wLight;
       ctx.lineCap = "round";
       ctx.beginPath();
-      for (let d = 0; d < 5; d++) {
-        const dxx = bx + 5 * u + hash01(seed + bi * 31 + d * 7) * (bw * 0.6 - 10 * u);
-        const dyy = top + 6 * u + hash01(seed + bi * 31 + d * 7 + 3) * (wh - 12 * u);
-        ctx.moveTo(dxx, dyy);
-        ctx.lineTo(dxx + 3.5 * u, dyy);
+      // one tight patch of coursework — five dashes in three staggered
+      // rows sharing course lines, running bond in shorthand. The same
+      // dashes scattered at random y read as specks; alignment is what
+      // says "brick".
+      const ax = bx + 5 * u + hash01(seed + bi * 31) * Math.max(0, bw * 0.6 - 20 * u);
+      const ay = top + 6 * u + hash01(seed + bi * 31 + 3) * Math.max(0, wh - 18 * u);
+      for (const [dx2, row] of [
+        [0, 0],
+        [5.5, 0],
+        [2.75, 1],
+        [0, 2],
+        [5.5, 2],
+      ] as const) {
+        ctx.moveTo(ax + dx2 * u, ay + row * 3 * u);
+        ctx.lineTo(ax + (dx2 + 4) * u, ay + row * 3 * u);
       }
       ctx.stroke();
       ctx.lineCap = "butt";
@@ -903,34 +913,39 @@ function drawSkyline(
             ctx.quadraticCurveTo(9.5, -8, 9.8, -13);
             ctx.stroke();
           } else if (tIn < STR) {
-            // the full stretch — chest to the stone, rump high, tail at
-            // the sky. The reason to keep a rooftop.
+            // the full stretch — a play-bow: rump high, back dipping,
+            // chest low over the stretched forelegs, head UP and
+            // forward. (The head used to sit low over the paws and the
+            // silhouette read as a cat folded in half.) The reason to
+            // keep a rooftop.
             ctx.beginPath();
-            ctx.ellipse(4.2, -6, 4.4, 4.1, 0, 0, Math.PI * 2); // the rump, up
+            ctx.ellipse(4.2, -6.2, 4.4, 4.2, 0, 0, Math.PI * 2); // the rump, up
             ctx.rect(2.6, -2.5, 1.7, 2.4); // rear legs planted
             ctx.rect(5.4, -2.5, 1.7, 2.4);
-            // back sloping down to the chest, forelegs out to the paws
-            ctx.moveTo(6.5, -9.2);
-            ctx.quadraticCurveTo(0.5, -8.6, -3.4, -3.4);
-            ctx.lineTo(-10.6, -1);
-            ctx.lineTo(-10.6, 0.2);
-            ctx.lineTo(-1.5, 0.2);
-            ctx.quadraticCurveTo(1.4, -0.6, 3.2, -1.4);
+            // the back dips off the rump and climbs to the raised head;
+            // chest low, forelegs stretched flat out to the paws
+            ctx.moveTo(6.5, -9.4);
+            ctx.quadraticCurveTo(0, -4.9, -6.4, -6.6);
+            ctx.lineTo(-7.6, -4.2);
+            ctx.lineTo(-11.4, -0.8);
+            ctx.lineTo(-11.4, 0.2);
+            ctx.lineTo(-1.6, 0.2);
+            ctx.quadraticCurveTo(1.4, -0.6, 3.2, -1.6);
             ctx.closePath();
-            // the head low over the paws
-            ctx.moveTo(-5.6, -3.8);
-            ctx.arc(-8.6, -3.8, 2.9, 0, Math.PI * 2);
-            ctx.moveTo(-10.6, -5.6);
-            ctx.lineTo(-10.2, -8.6);
-            ctx.lineTo(-8.6, -6.4);
-            ctx.moveTo(-7.4, -6.6);
-            ctx.lineTo(-6.5, -8.5);
-            ctx.lineTo(-5.7, -6.2);
+            // the head up and forward, chin above the paws
+            ctx.moveTo(-5.5, -8.2);
+            ctx.arc(-8.4, -8.2, 2.9, 0, Math.PI * 2);
+            ctx.moveTo(-10.4, -10.2);
+            ctx.lineTo(-9.8, -13.2); // far ear
+            ctx.lineTo(-8.2, -10.8);
+            ctx.moveTo(-6.8, -11);
+            ctx.lineTo(-5.9, -13); // near ear
+            ctx.lineTo(-5.1, -10.4);
             ctx.fill();
             ctx.lineWidth = 1.8;
             ctx.beginPath();
-            ctx.moveTo(7.3, -7.5);
-            ctx.quadraticCurveTo(10.8, -11, 9.9, -16);
+            ctx.moveTo(7.3, -8.5);
+            ctx.quadraticCurveTo(10.8, -12.5, 9.9, -17.5);
             ctx.stroke();
           } else {
             // the long sit — the statue with a pulse: the tail keeps
@@ -1769,10 +1784,10 @@ export function Hoop() {
     const { outline: OUTLINE, paper: PAPER, gold: YELLOW, fur: FUR, hair: HAIR, face: FACE, headband: HEADBAND, hoodie: HOODIE, pocket: POCKET, grape: GRAPE, teal: TEAL } = THEME;
     const age = now - eventAtRef.current;
     let dy = 0;
-    // he's even-keeled: beating the game gets the double hop, a make
-    // gets one modest hop, a miss doesn't move him
+    // he's even-keeled: only beating the whole game moves his feet.
+    // Every other beat he holds his frame — the old idle bob read as
+    // aimless bouncing on the death card, and stillness is his register.
     if (pose === "triumph") dy = age < 0.64 ? [-1, 0, -1, 0][Math.floor(age / 0.16)] : 0;
-    else if (pose === "joy") dy = age < 0.16 ? -1 : 0;
     // holding the ball he's set — crouch into the pull, no bouncing.
     // Only once the pull ARMS: a ghost pull isn't a shot, so bailing
     // out of one can't pop him back up like a hop.
@@ -1780,7 +1795,6 @@ export function Hoop() {
       const d = dragRef.current;
       dy = d && isArmed(d) ? 1 : 0;
     }
-    else dy = Math.floor(now / 0.82) % 2 ? 1 : 0; // idle bob
 
     const cx = feetX;
     const foot = floorY + dy * k;
@@ -1968,21 +1982,17 @@ export function Hoop() {
             [-5.0, -12.5, -6.4, -17.5],
             [5.0, -12.5, 6.4, -17.5],
           ] // the V — beating the whole game earns it
-        : pose === "joy"
+        : pose === "joy" || pose === "rest"
           ? [
-              [-3.9, -7.9, -4.4, -5.6],
-              [5.0, -12.5, 6.2, -16.8],
-            ] // one fist up, off arm easy — a made shot is the job
+              [-3.5, -8.8, -3.6, -6.0],
+              [3.5, -8.8, 3.6, -6.0],
+            ] // both verdicts: arms straight down, nothing performed —
+              // the turn and the face carry the reaction
           : pose === "panic"
             ? [
                 [-5.0, -10.2, -6.8, -10.2],
                 [5.0, -10.2, 6.8, -10.2],
               ] // hands held out, steady — braced, not flailing
-            : pose === "rest"
-              ? [
-                  [-3.9, -7.9, -4.4, -5.6],
-                  [3.9, -7.9, 4.4, -5.6],
-                ] // arms easy at his sides — he takes the L quietly
               : pose === "watch"
                 ? [
                     [-4.6, -9.6, -5.6, -11.5],
@@ -2281,16 +2291,16 @@ export function Hoop() {
     // the bangs — a jagged fringe hanging over the forehead, tips
     // stopping just above the eyes. Filled first, then only the zigzag
     // edge is inked; the top tucks into the hair mass unseen.
+    // three chunky teeth, matching the profile fringe's scale — the old
+    // eight-tooth zigzag read as noise at phone size
     const zig: readonly (readonly [number, number])[] = [
-      [-4.6, -15.4],
-      [-3.2, -14.0],
-      [-2.2, -15.0],
-      [-1.1, -13.8],
-      [0.0, -15.0],
-      [1.1, -13.9],
-      [2.2, -15.0],
-      [3.3, -14.0],
-      [4.6, -15.4],
+      [-4.6, -15.6],
+      [-2.9, -13.9],
+      [-1.4, -15.2],
+      [0.3, -13.7],
+      [1.9, -15.2],
+      [3.3, -13.9],
+      [4.6, -15.5],
     ];
     ctx.fillStyle = HAIR;
     ctx.beginPath();
@@ -2315,6 +2325,24 @@ export function Hoop() {
     ctx.strokeStyle = OUTLINE;
     ctx.lineWidth = feat;
     ctx.lineCap = "round";
+    // his signature eyes — the profile's dark glinted oval, worn as a
+    // pair. Both reaction faces (joy, rest) use them; the mouth is the
+    // only thing the verdict changes.
+    const glintOvals = () => {
+      ctx.fillStyle = OUTLINE;
+      for (const ex of [-1.9, 1.9]) {
+        ctx.beginPath();
+        ctx.ellipse(cx + ex * k, eyeY, 0.62 * k, 0.75 * k, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = PAPER;
+      for (const ex of [-1.9, 1.9]) {
+        ctx.beginPath();
+        ctx.arc(cx + (ex + 0.15) * k, eyeY - 0.15 * k, 0.2 * k, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = OUTLINE;
+    };
     if (pose === "panic") {
       // wide whites, pinprick pupils, mouth pressed flat — he's
       // watching the rattle like a deploy, not screaming at it
@@ -2346,16 +2374,61 @@ export function Hoop() {
       ctx.closePath();
       ctx.fill();
     } else if (pose === "joy") {
-      // half-lids and a small smile — buckets are expected
-      ctx.beginPath();
-      ctx.moveTo(cx - 2.6 * k, eyeY);
-      ctx.lineTo(cx - 1.0 * k, eyeY);
-      ctx.moveTo(cx + 1.0 * k, eyeY);
-      ctx.lineTo(cx + 2.6 * k, eyeY);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(cx, foot - 12.1 * k, 0.8 * k, Math.PI * 0.2, Math.PI * 0.8);
-      ctx.stroke();
+      // one make in four he mugs for the camera instead — the smug
+      // pout: one eye squinted flat, the other wide, duck lips pushed
+      // off-center, and the jawline grown into the silhouette (an
+      // interior jaw line just reads as a beard smudge at this size).
+      // Hashed off the swish timestamp so it's stable for the whole
+      // hold and rerolls each make.
+      if (hash01(Math.floor(eventAtRef.current * 997)) < 0.25) {
+        // the chin wedge — FACE fill tucked above the head outline's
+        // ink band (no seam sliver), only the V sides inked, then the
+        // fill restated to clean the stroke's inner edge
+        ctx.fillStyle = FACE;
+        ctx.beginPath();
+        ctx.moveTo(cx - 2.2 * k, foot - 10.75 * k);
+        ctx.lineTo(cx - 0.6 * k, foot - 9.4 * k);
+        ctx.lineTo(cx + 1.4 * k, foot - 10.75 * k);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineWidth = lw; // the jaw is silhouette — contour weight
+        ctx.beginPath();
+        ctx.moveTo(cx - 2.35 * k, foot - 10.45 * k);
+        ctx.lineTo(cx - 0.6 * k, foot - 9.4 * k);
+        ctx.lineTo(cx + 1.55 * k, foot - 10.45 * k);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(cx - 2.2 * k, foot - 10.72 * k);
+        ctx.lineTo(cx - 0.62 * k, foot - 9.45 * k);
+        ctx.lineTo(cx + 1.4 * k, foot - 10.72 * k);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = OUTLINE;
+        ctx.lineWidth = feat;
+        ctx.beginPath();
+        ctx.moveTo(cx - 2.6 * k, eyeY);
+        ctx.lineTo(cx - 1.2 * k, eyeY);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(cx + 1.9 * k, eyeY, 0.62 * k, 0.75 * k, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = PAPER;
+        ctx.beginPath();
+        ctx.arc(cx + 2.05 * k, eyeY - 0.15 * k, 0.2 * k, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = OUTLINE;
+        ctx.beginPath();
+        ctx.ellipse(cx - 0.8 * k, foot - 11.85 * k, 0.75 * k, 0.45 * k, -0.14, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // the default make face — eyes wide open on the camera, small
+        // smile, arms staying down. The mouth is the only thing a
+        // make changes; the old fist-pump read as a cheesy wave.
+        glintOvals();
+        ctx.beginPath();
+        ctx.arc(cx, foot - 12.1 * k, 0.8 * k, Math.PI * 0.2, Math.PI * 0.8);
+        ctx.stroke();
+      }
     } else if (pose === "aim" || pose === "watch") {
       // locked in the whole time the ball's in his hands — dot eyes,
       // brows angled down. Half-lids over the ball read as sleepwalking.
@@ -2381,13 +2454,20 @@ export function Hoop() {
         ctx.stroke();
       }
     } else {
-      // stoic half-lids and a flat mouth — he's done this before
-      ctx.beginPath();
-      ctx.moveTo(cx - 2.6 * k, eyeY);
-      ctx.lineTo(cx - 1.0 * k, eyeY);
-      ctx.moveTo(cx + 1.0 * k, eyeY);
-      ctx.lineTo(cx + 2.6 * k, eyeY);
-      ctx.stroke();
+      // the post-miss stare — glinted ovals, flat mouth. Says "again"
+      // better than any frown; the stillness is the expression. He
+      // stands dead still on the death card now (no bob), so a slow
+      // two-frame blink keeps him alive without moving his feet.
+      if (now % 3.6 > 3.46) {
+        ctx.beginPath();
+        for (const ex of [-1.9, 1.9]) {
+          ctx.moveTo(cx + (ex - 0.62) * k, eyeY);
+          ctx.lineTo(cx + (ex + 0.62) * k, eyeY);
+        }
+        ctx.stroke();
+      } else {
+        glintOvals();
+      }
       ctx.beginPath();
       ctx.moveTo(cx - 0.5 * k, foot - 11.8 * k);
       ctx.lineTo(cx + 0.5 * k, foot - 11.8 * k);
@@ -2943,10 +3023,16 @@ export function Hoop() {
             ctx.ellipse(0, 0, 6.5, 4.2, -0.12, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
-            // the wing — a chunky leaf pivoting off the shoulder,
-            // swept back whichever frame it's on
+            // the wing — a chunky leaf pivoting off the shoulder. Two
+            // snapped frames while flapping; in a glide it folds along
+            // the back (the down frame used to hold through glides and
+            // read as a freeze, not a glide)
             ctx.beginPath();
-            if (up) {
+            if (!flapping) {
+              ctx.moveTo(2, -1.4);
+              ctx.quadraticCurveTo(-3, -5.2, -10, -3.6);
+              ctx.quadraticCurveTo(-4, -0.9, 2, -1.4);
+            } else if (up) {
               ctx.moveTo(-2.5, -2);
               ctx.quadraticCurveTo(-7.5, -9, -8, -10);
               ctx.quadraticCurveTo(-3.5, -8.5, 2, -1.5);
@@ -3415,7 +3501,10 @@ export function Hoop() {
         ph === "beat"
           ? "triumph"
           : madeRef.current
-            ? "joy"
+            ? now - eventAtRef.current < 0.45
+              ? "watch" // hold the follow-through while the net snaps —
+              // shooters keep their form through the make
+              : "joy" // then the turn and the shrug
             : ph === "dead"
               ? replayingRef.current
                 ? replayRef.current
