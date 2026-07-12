@@ -1,7 +1,7 @@
 # Hooping
 
-Six trick shots, one ball. Make the shot to advance. Miss and you start
-over. There is no luck — the ball bounces the same way every time.
+Six levels, one ball per level. Make the shot to advance. Miss and you
+start over!
 
 Play it at [hooping.io](https://hooping.io).
 
