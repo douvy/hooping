@@ -4535,13 +4535,14 @@ export function Hoop() {
     ctx.lineTo(W, grassY + 40);
     ctx.stroke();
 
-    // the hoop — board, iron, net in the live scene's proportions,
-    // planted at the right edge so the shot has somewhere to land
+    // the hoop — board, iron, net, planted at the right edge so the
+    // shot has somewhere to land. The iron rides well above the
+    // shooter's head: a rim at shoulder height reads as a toy
     const frontX = 880;
     const backX = frontX + 120;
-    const rimY = 330;
+    const rimY = 240;
     const boardX = backX + 14;
-    const bTop = rimY - 225;
+    const bTop = rimY - 170;
     const bBot = rimY + 12;
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -4625,14 +4626,14 @@ export function Hoop() {
 
     // the little guy mid-shot, eyes on the ball — mid-frame, clear of
     // the clock tower and the sun's shoulder of the sky
-    const k = 13;
+    const k = 12;
     const feetX = 430;
     drawCreature(ctx, feetX, grassY, k, "watch", 0.001, true);
     // ghost beats trailing from his hand to the ball on its arc
     const handX = feetX + 6.6 * k;
     const handY = grassY - 16.2 * k;
-    const ballX = 672;
-    const ballY = 268;
+    const ballX = 710;
+    const ballY = 205;
     ctx.fillStyle = OUTLINE;
     for (let i = 1; i <= 5; i++) {
       const t = i / 6;
@@ -4653,11 +4654,13 @@ export function Hoop() {
     ctx.strokeText("HOOPING", 600, 150);
     ctx.fillStyle = MUSTARD;
     ctx.fillText("HOOPING", 600, 150);
+    // the one line of copy rides the grass, like the court's painted
+    // lines — the sky belongs to the shot
     ctx.font = `600 30px ui-monospace, Menlo, monospace`;
     ctx.lineWidth = 6;
-    ctx.strokeText("one shot. a miss ends the game.", 600, 205);
+    ctx.strokeText("one shot. a miss ends the game.", 600, 602);
     ctx.fillStyle = PAPER;
-    ctx.fillText("one shot. a miss ends the game.", 600, 205);
+    ctx.fillText("one shot. a miss ends the game.", 600, 602);
     return cv;
   };
 
