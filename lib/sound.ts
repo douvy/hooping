@@ -59,14 +59,17 @@ export function setMuted(m: boolean) {
   if (master) master.gain.value = m ? 0 : 0.5;
 }
 
-// iOS unlock. Two Safari rules the lazy context breaks: (1) an
-// AudioContext only starts inside a real tap's call stack; (2) the
-// ring/silent switch mutes WebAudio unless the session declares itself
-// playback. Called from pointerdown — aiming is a real gesture.
+// iOS unlock. Safari only starts an AudioContext inside a real tap's
+// call stack — called from pointerdown, aiming is a real gesture.
+// The session declares itself "ambient": mixes with the user's own
+// audio, never registers as Now Playing (no Dynamic Island
+// indicator), and respects the ring/silent switch — silent phone,
+// silent game. We tried "playback" (audible through the switch) but
+// the persistent media indicator was too intrusive.
 export function unlock() {
   const session = (navigator as Navigator & { audioSession?: { type: string } })
     .audioSession;
-  if (session) session.type = "playback";
+  if (session) session.type = "ambient";
   ensure();
   startBed();
 }
@@ -161,9 +164,11 @@ type NoteOpts = {
 // The melodic engine's one volume knob. Phrases were scored at vols
 // that towered over the game's impact voice (ticks 0.032, clanks
 // ≤0.05) — field report: level-clear and death phrases way too loud
-// on phones. 0.4 sits their peaks beside the impacts instead of over
-// them; relative note dynamics inside every phrase are untouched.
-const PHRASE_LEVEL = 0.4;
+// on phones. Second field report: still louder than the drag-notch
+// tick and the brick double-thump at 0.4. 0.28 puts clear-phrase
+// peaks (0.16 → ~0.045) beside the tick instead of over it; relative
+// note dynamics inside every phrase are untouched.
+const PHRASE_LEVEL = 0.28;
 
 /** The voice. Square (triangle where marked) through a fixed lowpass;
  * 7ms attack, flat sustain to 62% of duration, linear ramp to
@@ -260,8 +265,10 @@ const E5 = 659.26;
  * consecutive plays; the deeper griefs stay rare because deep deaths
  * are rare. */
 export function brick() {
-  note(B3, 0, 0.09, 0.07);
-  note(B3, 0.105, 0.09, 0.07);
+  // 0.1 × PHRASE_LEVEL ≈ the 0.028 it sat at before the 0.4 → 0.28
+  // drop — brick is the reference the music was lowered to match
+  note(B3, 0, 0.09, 0.1);
+  note(B3, 0.105, 0.09, 0.1);
 }
 
 /** A burst of filtered noise — nothing synthetic says "nylon". */
