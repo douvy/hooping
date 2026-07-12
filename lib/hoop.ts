@@ -6,13 +6,13 @@
 // fatter make bands, friendlier game, same drama. Tuned in
 // scripts/hoopsim.mjs.
 
-export interface Vec {
+interface Vec {
   x: number;
   y: number;
 }
 
 /** An obstacle segment the ball bounces off — walls, ramps, ledges. */
-export interface Wall {
+interface Wall {
   x1: number;
   y1: number;
   x2: number;
@@ -34,14 +34,14 @@ export interface Level {
 
 export const BALL_R = 0.11; // a hair under regulation — grace lives here
 export const RIM_GAP = 0.48; // a shade over 18" — the friendly iron
-export const RIM_TUBE = 0.02; // the steel itself
+const RIM_TUBE = 0.02; // the steel itself
 export const BOARD_OFF = 0.1; // glass sits just behind the back rim
 export const BOARD_H = 0.9;
-export const G = 9.8;
-export const E_RIM = 0.6; // steel is lively — this is the rattle knob
-export const E_BOARD = 0.65;
-export const E_FLOOR = 0.6;
-export const E_WALL = 0.6;
+const G = 9.8;
+const E_RIM = 0.6; // steel is lively — this is the rattle knob
+const E_BOARD = 0.65;
+const E_FLOOR = 0.6;
+const E_WALL = 0.6;
 export const MIN_POWER = 4;
 export const MAX_POWER = 13;
 
@@ -131,7 +131,7 @@ export const LEVELS: Level[] = [
   },
 ];
 
-export type TouchKind = "rim" | "board" | "floor" | "wall";
+type TouchKind = "rim" | "board" | "floor" | "wall";
 
 export interface Touch {
   x: number;
@@ -142,7 +142,7 @@ export interface Touch {
   t: number;
 }
 
-export interface ShotState {
+interface ShotState {
   x: number;
   y: number;
   vx: number;
