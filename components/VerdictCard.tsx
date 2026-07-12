@@ -523,10 +523,10 @@ export default function VerdictCard({
               its own beat with a hand-set tilt, then the whole line
               hangs from its nail and sways. */}
           <h2
-            aria-label="Banner Night"
+            aria-label="Goated AF"
             className="origin-top animate-[banner-sway_3.4s_ease-in-out_1.4s_infinite] font-display text-3xl font-bold text-warning [text-shadow:0.07em_0.07em_0_var(--foreground)]"
           >
-            {"Banner Night".split("").map((ch, i) => (
+            {"Goated AF".split("").map((ch, i) => (
               <span
                 key={i}
                 aria-hidden
@@ -552,10 +552,10 @@ export default function VerdictCard({
               <br />
               {wins > 1
                 ? `that's banner ${wins} in the rafters.`
-                : "i watched every shot."}
+                : "first banner in the rafters."}
             </p>
             <p className="mt-1 text-right font-hand text-lg text-muted">
-              — the little guy
+              — hooper
             </p>
           </div>
         </>

@@ -1403,7 +1403,7 @@ interface Confetti {
 // enter = the level-intro card; it hands off to aim on its own, and any
 // press skips straight there — the card never eats an input
 type Phase = "enter" | "aim" | "flying" | "cleared" | "dead" | "beat";
-type Pose = "aim" | "watch" | "panic" | "joy" | "triumph" | "rest";
+type Pose = "aim" | "watch" | "panic" | "joy" | "triumph" | "champ" | "rest";
 
 interface LastShot {
   made: boolean;
@@ -1982,7 +1982,7 @@ export function Hoop() {
             [-5.0, -12.5, -6.4, -17.5],
             [5.0, -12.5, 6.4, -17.5],
           ] // the V — beating the whole game earns it
-        : pose === "joy" || pose === "rest"
+        : pose === "joy" || pose === "rest" || pose === "champ"
           ? [
               [-3.5, -8.8, -3.6, -6.0],
               [3.5, -8.8, 3.6, -6.0],
@@ -2373,6 +2373,13 @@ export function Hoop() {
       ctx.arc(cx, foot - 11.6 * k, 0.9 * k, 0, Math.PI);
       ctx.closePath();
       ctx.fill();
+    } else if (pose === "champ") {
+      // the poster champion — glint eyes on the camera, the regular
+      // make's small smile, arms down. The crown does the talking.
+      glintOvals();
+      ctx.beginPath();
+      ctx.arc(cx, foot - 12.1 * k, 0.8 * k, Math.PI * 0.2, Math.PI * 0.8);
+      ctx.stroke();
     } else if (pose === "joy") {
       // one make in four he mugs for the camera instead — the smug
       // pout: one eye squinted flat, the other wide, duck lips pushed
@@ -2502,7 +2509,7 @@ export function Hoop() {
       ctx.lineTo(px2, py2 + k);
       ctx.stroke();
     }
-    if (pose === "triumph") {
+    if (pose === "triumph" || pose === "champ") {
       // the crown — all six, one ball
       const cy = headY - headR + 0.4 * k;
       ctx.fillStyle = YELLOW;
@@ -4338,7 +4345,7 @@ export function Hoop() {
     // already told the story.
     const verdict = (
       beat
-        ? `ALL ${LEVELS.length} LEVELS, ONE BALL`
+        ? "GOATED AF"
         : shareStakes({
             frontier,
             todayFrontier,
@@ -4379,14 +4386,14 @@ export function Hoop() {
     ctx.lineTo(W, grassY + 46);
     ctx.stroke();
 
-    // the little guy — crowned in his V after a win, ball resting at his
-    // feet; otherwise frozen in the follow-through, the shot still rising.
+    // the little guy — crowned and composed after a win, arms down, ball
+    // at his feet; otherwise frozen in the follow-through, the shot rising.
     // snapNow: a fixed clock that lands every pose on its rest frame
     // (no mid-hop feet, no mid-bob offset).
     const k = 21;
     const snapNow = beat ? eventAtRef.current + 1 : 0.001;
     if (beat) {
-      drawCreature(ctx, W / 2, grassY, k, "triumph", snapNow);
+      drawCreature(ctx, W / 2, grassY, k, "champ", snapNow);
       ctx.fillStyle = withAlpha(OUTLINE, "2b");
       ctx.beginPath();
       ctx.ellipse(W / 2 + 7.5 * k, grassY + 2, 3.3 * k, 0.9 * k, 0, 0, Math.PI * 2);
