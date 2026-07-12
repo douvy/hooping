@@ -46,14 +46,25 @@ function practicedAim(level, sigP, sigA) {
     }
   }
   if (makes.length === 0) return null;
-  let best = null;
-  let bestScore = -1;
-  // robustness sampling is the expensive bit — thin the candidate list
-  const step = Math.max(1, Math.floor(makes.length / 120));
+  // two stages: a wide cheap scan, then a careful rescore of the top
+  // few. One noisy stage (120 candidates × 60 shots, σ ≈ 6.5%/score)
+  // routinely crowned a lucky mediocre aim and misreported the level.
+  const step = Math.max(1, Math.floor(makes.length / 300));
+  const scored = [];
   for (let i = 0; i < makes.length; i += step) {
     const m = makes[i];
     let hit = 0;
-    for (let s = 0; s < 60; s++) {
+    for (let s = 0; s < 150; s++) {
+      if (simulateShot(level, m.p + gaussian() * sigP, m.a + gaussian() * sigA).made) hit++;
+    }
+    scored.push({ m, hit });
+  }
+  scored.sort((a, b) => b.hit - a.hit);
+  let best = null;
+  let bestScore = -1;
+  for (const { m } of scored.slice(0, 10)) {
+    let hit = 0;
+    for (let s = 0; s < 1000; s++) {
       if (simulateShot(level, m.p + gaussian() * sigP, m.a + gaussian() * sigA).made) hit++;
     }
     if (hit > bestScore) {
