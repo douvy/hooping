@@ -1,7 +1,7 @@
 "use client";
 
-// The verdict card — the epilogue after the death replay, staged like
-// one. Every element on the death card derives its style from a single
+// The verdict card — the death's epilogue, staged like one.
+// Every element on the death card derives its style from a single
 // clock t (seconds since the card mounted) through lib/spring.ts beats
 // from lib/choreo.ts: the death word stamps, the run's dots refill one
 // tick apart, the ✗ strikes and shakes the row, a held breath, then the
