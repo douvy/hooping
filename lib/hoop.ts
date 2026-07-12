@@ -105,7 +105,12 @@ export const LEVELS: Level[] = [
     launch: { x: 1, y: 1 },
     rim: { x: 5.4, y: 3.05 },
     board: true,
-    walls: [{ x1: 2.6, y1: 4.0, x2: 6.4, y2: 4.0 }],
+    // ceiling 4.0 → 4.15 (the keyhole's height): at 4.0 the robust aim
+    // was hard to FIND — practiced-but-imperfect mobile players landed
+    // at ~52-55% while the keyhole held ~60%, so the window out-killed
+    // the finale on phones. 4.15 sims at ~64% mobile under both strong
+    // and weak aim search, restoring the ramp.
+    walls: [{ x1: 2.6, y1: 4.15, x2: 6.4, y2: 4.15 }],
   },
   {
     id: 6,
