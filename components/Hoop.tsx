@@ -5002,6 +5002,16 @@ export function Hoop() {
           <span className="max-sm:hidden">
             <Kbd>space</Kbd> replay
           </span>
+          {/* the tip jar — phones get just the star, the line is full */}
+          <a
+            href="https://github.com/douvy/hooping"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="star hooping on github"
+            className="underline underline-offset-2"
+          >
+            ★<span className="max-sm:hidden"> github</span>
+          </a>
         </span>
       </div>
     </div>
