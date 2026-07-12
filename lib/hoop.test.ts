@@ -4,9 +4,15 @@ import {
   LEVELS,
   MIN_POWER,
   MAX_POWER,
+  V_SCALE,
   simulateShot,
   type Level,
 } from "./hoop.ts";
+
+// calibration shots below are written in pre-V_SCALE m/s (where the
+// levels were tuned) and scaled on the way in — the spatial intent
+// (where each shot sits relative to the make band) is what's tested
+const vs = (p: number) => p * V_SCALE;
 
 function sweep(level: Level) {
   const out = [];
@@ -19,8 +25,8 @@ function sweep(level: Level) {
 }
 
 test("deterministic: same shot, same result — never dice", () => {
-  const a = simulateShot(LEVELS[1], 9.3, 67);
-  const b = simulateShot(LEVELS[1], 9.3, 67);
+  const a = simulateShot(LEVELS[1], vs(9.3), 67);
+  const b = simulateShot(LEVELS[1], vs(9.3), 67);
   assert.deepStrictEqual(a, b);
 });
 
@@ -52,7 +58,7 @@ test("no level's answer sits on the power cap — full-power isn't the meta", ()
     assert.ok(found);
     let below = false;
     for (let a = 20; a <= 80 && !below; a += 1) {
-      for (let p = MIN_POWER; p <= MAX_POWER - 1 && !below; p += 0.25) {
+      for (let p = MIN_POWER; p <= MAX_POWER - V_SCALE && !below; p += 0.25) {
         if (simulateShot(lv, p, a).made) below = true;
       }
     }
@@ -113,8 +119,8 @@ test("missBy: shrinks as the shot gets closer to the answer", () => {
   // level 3 (deep), fixed angle — walk power toward the make band and
   // the recorded miss distance must walk toward zero with it
   const lv = LEVELS[2];
-  const far = simulateShot(lv, 7.5, 57);
-  const near = simulateShot(lv, 8.8, 57);
+  const far = simulateShot(lv, vs(7.5), 57);
+  const near = simulateShot(lv, vs(8.8), 57);
   assert.ok(!far.made && !near.made, "calibration shots must both miss");
   assert.ok(
     near.missBy < far.missBy,
@@ -125,8 +131,8 @@ test("missBy: shrinks as the shot gets closer to the answer", () => {
 test("missBy: sides read correctly — under is short, over is long", () => {
   // boardless court so an overshoot sails long instead of banking back
   const open: Level = { ...LEVELS[1], board: false };
-  const under = simulateShot(open, 7.0, 59);
-  const over = simulateShot(open, 11.0, 59);
+  const under = simulateShot(open, vs(7.0), 59);
+  const over = simulateShot(open, vs(11.0), 59);
   assert.ok(!under.made && !over.made);
   assert.strictEqual(under.missSide, "short");
   assert.strictEqual(over.missSide, "long");
@@ -139,7 +145,7 @@ test("a ball landing on a ledge dies fast — no 12s waits", () => {
     ...LEVELS[0],
     walls: [{ x1: 2, y1: 2, x2: 4, y2: 2 }],
   };
-  const r = simulateShot(ledged, 5.5, 70);
+  const r = simulateShot(ledged, vs(5.5), 70);
   assert.ok(r.touches.some((t) => t.kind === "wall"), "never touched the ledge");
   assert.ok(!r.made);
   assert.ok(r.t < 3, `dead ball took ${r.t.toFixed(2)}s`);
@@ -150,7 +156,7 @@ test("walls reflect the ball — a solid wall can't be shot through", () => {
     ...LEVELS[0],
     walls: [{ x1: 3, y1: 0, x2: 3, y2: 5 }],
   };
-  const r = simulateShot(walled, 10, 20);
+  const r = simulateShot(walled, vs(10), 20);
   assert.ok(
     r.touches.some((t) => t.kind === "wall"),
     "never touched the wall",

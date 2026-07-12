@@ -37,17 +37,28 @@ export const RIM_GAP = 0.48; // a shade over 18" — the friendly iron
 const RIM_TUBE = 0.02; // the steel itself
 export const BOARD_OFF = 0.1; // glass sits just behind the back rim
 export const BOARD_H = 0.9;
-const G = 9.8;
+// The tempo knob. Honest 9.8 gravity at toy scale on a phone screen
+// reads floaty (HN: "physics needs improved"). Ballistics has a scale
+// symmetry: G→kG with every speed →√k·speed traces the IDENTICAL
+// paths — bounce height v²/G is invariant — so every level's answer
+// and make band survives; the game just plays √k faster. DT shrinks
+// by √k too, keeping the spatial substep (and so every collision
+// knife-edge) where it was. All speed-shaped constants below wear
+// V_SCALE; consumers of absolute speeds (sound volume, the pull
+// mapping, sim noise) divide it back out.
+const K = 1.8;
+export const V_SCALE = Math.sqrt(K);
+const G = 9.8 * K;
 const E_RIM = 0.6; // steel is lively — this is the rattle knob
 const E_BOARD = 0.65;
 const E_FLOOR = 0.6;
 const E_WALL = 0.6;
-export const MIN_POWER = 4;
-export const MAX_POWER = 13;
+export const MIN_POWER = 4 * V_SCALE;
+export const MAX_POWER = 13 * V_SCALE;
 
-const DT = 1 / 240;
+const DT = 1 / (240 * V_SCALE);
 const MAX_TIME = 12;
-const SETTLE_SPEED = 1.0; // a floor hit slower than this is a dead ball
+const SETTLE_SPEED = 1.0 * V_SCALE; // a floor hit slower than this is a dead ball
 const NET_DRAG = 0.45; // the swish grabs the ball on the way through
 
 // The ladder. One shot per level, miss = level 1 — so each level's answer

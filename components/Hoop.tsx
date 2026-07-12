@@ -19,6 +19,7 @@ import {
   MAX_POWER,
   MIN_POWER,
   RIM_GAP,
+  V_SCALE,
   createShot,
   type Shooter,
   type Touch,
@@ -1347,7 +1348,9 @@ interface Aim {
 // more precision. Floor keeps tiny viewports from going hair-trigger.
 function pullPxPerMps(): number {
   const s = Math.min(window.innerWidth, window.innerHeight);
-  return Math.max(14, Math.min(24, (s * 0.58) / MAX_POWER));
+  // clamp in pre-V_SCALE units (the 14-24 bounds were tuned there),
+  // then convert — the physical gesture is exactly what it was
+  return Math.max(14, Math.min(24, (s * 0.58 * V_SCALE) / MAX_POWER)) / V_SCALE;
 }
 
 // a drag only ARMS when it's a real pull: past min power (where the bar
@@ -2740,17 +2743,19 @@ export function Hoop() {
         // new touches → sound + sparks
         while (seenTouchesRef.current < s.touches.length) {
           const t = s.touches[seenTouchesRef.current++];
+          // impact speeds wear V_SCALE — divide it out so the volume
+          // curves keep their tuning
           if (t.kind === "rim") {
-            sound.clank(t.speed);
+            sound.clank(t.speed / V_SCALE);
             navigator.vibrate?.(12);
             lastRimAtRef.current = now;
             sparksRef.current.push({ x: t.x, y: t.y, at: now, color: MUSTARD });
           } else if (t.kind === "board" || t.kind === "wall") {
-            sound.board(t.speed);
+            sound.board(t.speed / V_SCALE);
             // ink sparks — paper ones would vanish against the paper board
             sparksRef.current.push({ x: t.x, y: t.y, at: now, color: OUTLINE });
           } else if (t.kind === "floor") {
-            sound.bounce(t.speed);
+            sound.bounce(t.speed / V_SCALE);
           }
         }
         // the swish — fires mid-flight, the moment the ball drops through

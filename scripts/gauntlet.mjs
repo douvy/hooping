@@ -12,7 +12,7 @@
 //
 // usage: node --experimental-strip-types scripts/gauntlet.mjs
 
-import { LEVELS, simulateShot } from "../lib/hoop.ts";
+import { LEVELS, MIN_POWER, MAX_POWER, V_SCALE, simulateShot } from "../lib/hoop.ts";
 
 // hoop.ts is RNG-free by design — the sim brings its own dice
 // (the player's hands, not the game's)
@@ -34,14 +34,19 @@ function gaussian() {
 // the ladder now lives in lib/hoop.ts — this sim verifies the real thing
 const LADDER = LEVELS;
 
-const P_MIN = 4, P_MAX = 13;
+const P_MIN = MIN_POWER, P_MAX = MAX_POWER;
+// finger noise lives in pull pixels; the px→m/s gain wears V_SCALE,
+// so the same 4px hand error is a √k-larger velocity sigma
+const SIG16 = 0.25 * V_SCALE;
+const SIG24 = 0.17 * V_SCALE;
+const SIG_SLOPPY = 0.5 * V_SCALE;
 
 // find the most robust make: scan fine grid, score each make by how often
 // its noisy neighborhood also makes, pick the fattest spot
 function practicedAim(level, sigP, sigA) {
   const makes = [];
   for (let a = 15; a <= 85; a += 1) {
-    for (let p = P_MIN; p <= P_MAX + 1e-9; p += 0.1) {
+    for (let p = P_MIN; p <= P_MAX + 1e-9; p += 0.1 * V_SCALE) {
       if (simulateShot(level, p, a).made) makes.push({ p, a });
     }
   }
@@ -91,7 +96,7 @@ const aims = [];
 const probs16 = [];
 const probs24 = [];
 for (const lv of LADDER) {
-  const aim = practicedAim(lv, 0.25, 1.2);
+  const aim = practicedAim(lv, SIG16, 1.2);
   aims.push(aim);
   if (!aim) {
     console.log(`${String(lv.id).padStart(2)} ${lv.name.padEnd(14)} UNSOLVABLE`);
@@ -99,8 +104,8 @@ for (const lv of LADDER) {
     probs24.push(0);
     continue;
   }
-  const p16 = makeProb(lv, aim, 0.25, 1.2);
-  const p24 = makeProb(lv, aim, 0.17, 0.8);
+  const p16 = makeProb(lv, aim, SIG16, 1.2);
+  const p24 = makeProb(lv, aim, SIG24, 0.8);
   probs16.push(p16);
   probs24.push(p24);
   console.log(
@@ -139,6 +144,6 @@ for (const [label, probs] of [["pull/16", probs16], ["pull/24", probs24]]) {
 }
 
 // first-timer sanity: sloppy hands on level 1 only
-const sloppy = makeProb(LADDER[0], aims[0], 0.5, 2.5);
+const sloppy = makeProb(LADDER[0], aims[0], SIG_SLOPPY, 2.5);
 console.log(`\nfirst-timer on level 1 (σ .5 m/s, 2.5°): ${(sloppy * 100).toFixed(0)}% per shot`);
 console.log(`→ expected shots to first clear: ~${(1 / sloppy).toFixed(1)}`);
