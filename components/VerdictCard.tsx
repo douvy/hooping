@@ -523,10 +523,10 @@ export default function VerdictCard({
               its own beat with a hand-set tilt, then the whole line
               hangs from its nail and sways. */}
           <h2
-            aria-label="You Beat It"
+            aria-label="Banner Night"
             className="origin-top animate-[banner-sway_3.4s_ease-in-out_1.4s_infinite] font-display text-3xl font-bold text-warning [text-shadow:0.07em_0.07em_0_var(--foreground)]"
           >
-            {"You Beat It".split("").map((ch, i) => (
+            {"Banner Night".split("").map((ch, i) => (
               <span
                 key={i}
                 aria-hidden

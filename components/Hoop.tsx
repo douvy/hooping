@@ -2760,7 +2760,7 @@ export function Hoop() {
           // block raises whatever's beyond ropeBase.
           const isWin = !practice && depth === LEVELS.length;
           if (practice) {
-            popRef.current = { text: "THAT'S THE ONE", at: now, color: YELLOW };
+            popRef.current = { text: "THAT'S THE PULL", at: now, color: YELLOW };
           } else {
             // today's ledger — deeper than any make today. Re-reaching the
             // career best is the plateaued player's session summit; the
@@ -2811,13 +2811,13 @@ export function Hoop() {
             popRef.current = {
               text:
                 depth === LEVELS.length
-                  ? "GAME WINNER"
+                  ? "MOGGER'S MOG"
                   : milestone
                     ? `${bucketsRef.current} BUCKETS`
                     : firstEver
                       ? "FIRST BUCKET"
                       : s.touches.length >= 4
-                        ? "CIRCUS SHOT"
+                        ? "OFF EVERYTHING"
                         : walled
                           ? "OFF THE WALL"
                           : rims >= 2
@@ -4040,29 +4040,27 @@ export function Hoop() {
           newBestRef.current || matchedRef.current ? YELLOW : PAPER,
         );
       } else if (ph === "enter") {
-        // level 6 is the last shot; the level past your best is match
-        // point — the run that could set a new best should feel different
-        // BEFORE the shot, not just after. Deep runs get their streak
-        // named on the way in.
+        // level 6 is the last shot; the level past your best puts the
+        // record on the line — the run that could set a new best should
+        // feel different BEFORE the shot, not just after. Deep runs get
+        // their streak counted on the way in.
         const lastOne = level.id === LEVELS.length;
-        const matchPoint =
+        const recordShot =
           !lastOne && bestDepthRef.current > 0 && level.id === bestDepthRef.current + 1;
         card(
           lastOne
             ? "THE LAST SHOT"
-            : matchPoint
-              ? `LEVEL ${level.id} — MATCH POINT`
+            : recordShot
+              ? `LEVEL ${level.id} — BEST ON THE LINE`
               : `LEVEL ${level.id}`,
           lastOne
             ? `level ${level.id} — game ${run}`
-            : matchPoint
+            : recordShot
               ? `game ${run} — a make sets a new best`
-              : heat >= 4
-                ? `game ${run} — on fire`
-                : heat >= 2
-                  ? `game ${run} — heating up`
-                  : `game ${run}`,
-          lastOne || matchPoint ? YELLOW : PAPER,
+              : heat >= 2
+                ? `game ${run} — ${heat} straight`
+                : `game ${run}`,
+          lastOne || recordShot ? YELLOW : PAPER,
         );
       }
     };
