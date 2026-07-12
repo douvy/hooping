@@ -2374,9 +2374,60 @@ export function Hoop() {
       ctx.closePath();
       ctx.fill();
     } else if (pose === "champ") {
-      // the poster champion — glint eyes on the camera, the regular
-      // make's small smile, arms down. The crown does the talking.
-      glintOvals();
+      // the poster champion — 6/6 earns the shades: one wraparound
+      // shield in the sunset-mirror colorway, worn nowhere else. Flat
+      // translation of the real pair: the mirror gradient posterized
+      // into three hard bands (brick heat → gold → teal), a gold brow
+      // bar for the neon frame, ink nose notch, paper glint where the
+      // light grazes. No logos — features stay small. The small make
+      // smile stays under it; the crown still does the talking.
+      const gx = cx - 4.7 * k;
+      const gw = 9.4 * k;
+      const gy = eyeY - 1.3 * k;
+      const gh = 2.45 * k;
+      const shield = () => {
+        ctx.beginPath();
+        ctx.roundRect(gx, gy, gw, gh, [0.5 * k, 0.5 * k, 1.2 * k, 1.2 * k]);
+      };
+      ctx.save();
+      shield();
+      ctx.clip();
+      ctx.fillStyle = THEME.rim;
+      ctx.fillRect(gx, gy, gw, 1.05 * k);
+      ctx.fillStyle = YELLOW;
+      ctx.fillRect(gx, gy + 1.05 * k, gw, 0.7 * k);
+      ctx.fillStyle = TEAL;
+      ctx.fillRect(gx, gy + 1.75 * k, gw, gh - 1.75 * k);
+      // light grazing the mirror — two paper dashes, angled off the
+      // scene's upper-left light, and no more
+      ctx.strokeStyle = PAPER;
+      ctx.lineWidth = Math.max(1, k * 0.4);
+      ctx.beginPath();
+      ctx.moveTo(cx - 3.3 * k, gy + 1.9 * k);
+      ctx.lineTo(cx - 2.2 * k, gy + 0.6 * k);
+      ctx.moveTo(cx - 1.9 * k, gy + 2.0 * k);
+      ctx.lineTo(cx - 1.35 * k, gy + 1.35 * k);
+      ctx.stroke();
+      // the nose notch — an ink arch pushing up into the lens
+      ctx.fillStyle = OUTLINE;
+      ctx.beginPath();
+      ctx.moveTo(cx - 0.8 * k, gy + gh);
+      ctx.quadraticCurveTo(cx, gy + gh - 1.6 * k, cx + 0.8 * k, gy + gh);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      // the shield's one ink line, then the brow bar over its top edge
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = Math.max(1, lw * 0.8);
+      shield();
+      ctx.stroke();
+      ctx.fillStyle = YELLOW;
+      ctx.beginPath();
+      ctx.roundRect(gx - 0.25 * k, gy - 0.5 * k, gw + 0.5 * k, 0.85 * k, 0.4 * k);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = OUTLINE;
+      ctx.lineWidth = feat;
       ctx.beginPath();
       ctx.arc(cx, foot - 12.1 * k, 0.8 * k, Math.PI * 0.2, Math.PI * 0.8);
       ctx.stroke();
