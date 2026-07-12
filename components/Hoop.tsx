@@ -4706,24 +4706,30 @@ export function Hoop() {
           {/* the logo — the favicon's ball beside the wordmark, one paper
               word with the leather to its left */}
           <h1 className="flex items-center gap-1.5 font-display text-base font-semibold text-[#fdfaf2]">
-            <svg viewBox="0 0 32 32" className="h-[15px] w-[15px]" aria-hidden>
+            {/* the ball shrunk inside a ring of lighter leather (#ebc887,
+                matches app/icon.svg), dribbble style — 19px keeps the
+                ball itself at its old 15px optical size */}
+            <svg viewBox="0 0 32 32" className="h-[19px] w-[19px]" aria-hidden>
               <defs>
                 <clipPath id="hdr-ball">
                   <circle cx="16" cy="16" r="14" />
                 </clipPath>
               </defs>
-              <circle cx="16" cy="16" r="14" fill={THEME.ball} />
-              <g
-                clipPath="url(#hdr-ball)"
-                stroke={INK}
-                strokeWidth="1.8"
-                fill="none"
-              >
-                <path d="M2 16 Q16 21 30 16" />
-                <path d="M16 2 Q21 16 16 30" />
-                <circle cx="-5" cy="16" r="14.7" />
-                <circle cx="37" cy="16" r="14.7" />
+              <g transform="translate(16 16) scale(0.78) translate(-16 -16)">
+                <circle cx="16" cy="16" r="14" fill={THEME.ball} />
+                <g
+                  clipPath="url(#hdr-ball)"
+                  stroke={INK}
+                  strokeWidth="1.8"
+                  fill="none"
+                >
+                  <path d="M2 16 Q16 21 30 16" />
+                  <path d="M16 2 Q21 16 16 30" />
+                  <circle cx="-5" cy="16" r="14.7" />
+                  <circle cx="37" cy="16" r="14.7" />
+                </g>
               </g>
+              <circle cx="16" cy="16" r="14.6" fill="none" stroke="#ebc887" strokeWidth="2.4" />
             </svg>
             Hooping
           </h1>
