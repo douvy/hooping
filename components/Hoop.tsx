@@ -2823,16 +2823,16 @@ export function Hoop() {
                     ? `${bucketsRef.current} BUCKETS`
                     : firstEver
                       ? "FIRST BUCKET"
-                      : s.touches.length >= 4
-                        ? "OFF EVERYTHING"
-                        : walled
-                          ? "OFF THE WALL"
-                          : rims >= 2
-                            ? "SHOOTERS SHOOT"
-                            : banked
-                              ? "BANK'S OPEN"
-                              : depth === 3
-                                ? "MOGGER'S MOG"
+                      : depth === 3
+                        ? "MOGGER'S MOG" // any level-3 make, however ugly
+                        : s.touches.length >= 4
+                          ? "OFF EVERYTHING"
+                          : walled
+                            ? "OFF THE WALL"
+                            : rims >= 2
+                              ? "SHOOTERS SHOOT"
+                              : banked
+                                ? "BANK'S OPEN"
                                 : streak >= 2
                                   ? `SWISH ×${streak}`
                                   : "SWISH",
