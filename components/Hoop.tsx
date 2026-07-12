@@ -4332,14 +4332,23 @@ export function Hoop() {
       }
     });
 
-    // the one line of text — the career best, same wording as the top
-    // bar, gold when the run earned gold. No stats dashboard; the pips
+    // the one line of text — the same stakes ladder the death card
+    // climbs, first person because the poster speaks as the player.
+    // Gold when the run earned gold. No stats dashboard; the pips
     // already told the story.
-    const verdict = beat
-      ? `ALL ${LEVELS.length} LEVELS, ONE BALL`
-      : bestDepth > 0
-        ? `BEST ${bestDepth}/${LEVELS.length} CLEARED`
-        : `LEVEL ${levelIdx + 1}`;
+    const verdict = (
+      beat
+        ? `ALL ${LEVELS.length} LEVELS, ONE BALL`
+        : shareStakes({
+            frontier,
+            todayFrontier,
+            tiesBest: levelIdx + 1 === bestDepth,
+            closestYet: Boolean(last?.closestYet),
+            bestDepth,
+            total: LEVELS.length,
+            level: levelIdx + 1,
+          })
+    ).toUpperCase();
     let vSize = 56;
     ctx.font = `700 ${vSize}px ${DISPLAY}`;
     while (vSize > 36 && ctx.measureText(verdict).width > W - 160) {
@@ -4350,7 +4359,7 @@ export function Hoop() {
       verdict,
       vSize,
       480,
-      beat || last?.closestYet || frontier ? YELLOW : PAPER,
+      beat || last?.closestYet || frontier || todayFrontier ? YELLOW : PAPER,
     );
 
     // the ground — grass with the asphalt cap, same seams as the game
@@ -4414,16 +4423,15 @@ export function Hoop() {
     });
   };
 
-  // two artifacts, one verb. A death mints text — the wordle move: the
-  // run as emoji pips plus the stakes, and the link rides along tappable,
-  // which a PNG can never be. A win keeps the painted poster: there the
-  // flex is visual and share is the primary verb. The artifact property
-  // on the event says which one actually spreads.
+  // one artifact, one verb: every share mints the painted poster. On
+  // phones the bare link rides along as text so it stays tappable —
+  // apps that drop one keep the other. The emoji-pips text artifact
+  // survives as the fallback wherever files can't travel.
   const shareRun = async () => {
     const beat = phase === "beat";
     const coarse = matchMedia("(pointer: coarse)").matches;
     // the funnel's other end — run_end measures play, this measures spread
-    track("share", { beat, coarse, artifact: beat ? "poster" : "text" });
+    track("share", { beat, coarse, artifact: "poster" });
     const text = shareArtifact({
       beat,
       total: LEVELS.length,
@@ -4438,39 +4446,14 @@ export function Hoop() {
         level: levelIdx + 1,
       }),
     });
-    if (!beat) {
-      // share() rejects when the user dismisses the sheet — a no-op
-      if (navigator.share && coarse) {
-        try {
-          await navigator.share({ text });
-        } catch {
-          // sheet dismissed
-        }
-        return;
-      }
-      try {
-        await navigator.clipboard.writeText(text);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      } catch {
-        // clipboard blocked — the sheet is the last resort on desktop
-        try {
-          await navigator.share?.({ text });
-        } catch {
-          // dismissed
-        }
-      }
-      return;
-    }
+    // share() rejects when the user dismisses the sheet — a no-op
     if (navigator.share && coarse) {
       try {
         const file = new File([await renderShareCard(beat)], `hooping-game-${run}.png`, {
           type: "image/png",
         });
         if (navigator.canShare?.({ files: [file] })) {
-          // the card alone — it carries the pips and the URL; a caption
-          // would just be someone's app talking over it
-          await navigator.share({ files: [file] });
+          await navigator.share({ files: [file], text: "hooping.io" });
         } else {
           await navigator.share({ text }); // no file sharing — the text artifact steps in
         }
@@ -4488,14 +4471,217 @@ export function Hoop() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // clipboard won't take images (or blocked) — hand the file over
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(await renderShareCard(beat));
-      a.download = `hooping-game-${run}.png`;
-      a.click();
-      URL.revokeObjectURL(a.href);
+      // clipboard won't take images (or blocked) — the pips still travel
+      try {
+        await navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      } catch {
+        // clipboard fully blocked — hand the file over
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(await renderShareCard(beat));
+        a.download = `hooping-game-${run}.png`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }
     }
   };
+
+  // ——— dev-only: the unfurl card. `pnpm dev` + /?og lays the social
+  // image (1200×630, drawn 2x) over the page for a headless screenshot;
+  // scripts/og.sh captures it into app/opengraph-image.png. Painted with
+  // the game's own brushes so the unfurl ages with the art. ———
+  const renderOgCanvas = (): HTMLCanvasElement => {
+    const { outline: OUTLINE, paper: PAPER, ball: MUSTARD } = THEME;
+    const W = 1200;
+    const H = 630;
+    const cv = document.createElement("canvas");
+    cv.width = W * 2;
+    cv.height = H * 2;
+    const ctx = cv.getContext("2d")!;
+    ctx.scale(2, 2);
+    const DISPLAY =
+      getComputedStyle(document.body).getPropertyValue("--font-plex-serif").trim() ||
+      "ui-monospace, Menlo, monospace";
+    // the level-4 sky — the swollen sunset, the game's best hour. The
+    // sun gets an earlier clock than the city so it hangs above the
+    // roofline instead of drowning behind it; the windows keep dusk.
+    const night = NIGHT[3];
+    const sky = SKIES[3];
+    const grassY = H - 110;
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    // nudged left so the full disc clears the clock tower
+    ctx.save();
+    ctx.translate(-100, 0);
+    drawCelestials(ctx, W, grassY, sky, 0.3, 0.35);
+    ctx.restore();
+    drawSkyline(ctx, W, grassY, sky, night, 0.35, { hScale: 0.85 });
+
+    // the ground — grass with the asphalt cap, same seams as the game
+    ctx.fillStyle = THEME.grass;
+    ctx.fillRect(0, grassY, W, H - grassY);
+    ctx.fillStyle = THEME.asphalt;
+    ctx.fillRect(0, grassY, W, 40);
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(0, grassY);
+    ctx.lineTo(W, grassY);
+    ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(0, grassY + 40);
+    ctx.lineTo(W, grassY + 40);
+    ctx.stroke();
+
+    // the hoop — board, iron, net in the live scene's proportions,
+    // planted at the right edge so the shot has somewhere to land
+    const frontX = 880;
+    const backX = frontX + 120;
+    const rimY = 330;
+    const boardX = backX + 14;
+    const bTop = rimY - 225;
+    const bBot = rimY + 12;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    // pole
+    const poleX = boardX + 9;
+    const pw = 13;
+    ctx.fillStyle = THEME.concrete;
+    ctx.fillRect(poleX - pw / 2, bTop + 14, pw, grassY + 6 - bTop - 14);
+    ctx.fillStyle = shade(THEME.concrete);
+    ctx.fillRect(poleX + pw / 2 - 4.5, bTop + 14, 4.5, grassY + 6 - bTop - 14);
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(poleX - pw / 2, bTop + 14, pw, grassY + 6 - bTop - 14);
+    // board — the wooden sign: ink line, light bevel, darker face inset
+    const bw2 = 20;
+    ctx.fillStyle = darken(THEME.wood, 1.14);
+    ctx.lineWidth = 4.5;
+    ctx.beginPath();
+    ctx.roundRect(boardX, bTop, bw2, bBot - bTop, 5);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = THEME.wood;
+    ctx.beginPath();
+    ctx.roundRect(boardX + 5, bTop + 5, bw2 - 10, bBot - bTop - 10, 3);
+    ctx.fill();
+    ctx.fillStyle = shade(THEME.wood);
+    ctx.fillRect(boardX + 10, bTop + 7, 4, bBot - bTop - 14);
+    // mount
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(backX, rimY);
+    ctx.lineTo(boardX, rimY);
+    ctx.stroke();
+    // net — the diamond mesh, ink under paper
+    const netLen = 92;
+    const midXc = (frontX + backX) / 2;
+    const topW = backX - frontX;
+    const midW = topW * 0.72;
+    const botW = topW * 0.55;
+    const midY = rimY + netLen * 0.52;
+    const botY = rimY + netLen;
+    const at = (w: number, t: number) => midXc - w / 2 + w * t;
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const tx = at(topW, i / 3);
+      if (i > 0) {
+        ctx.moveTo(tx, rimY);
+        ctx.lineTo(at(midW, (i - 0.5) / 3), midY);
+      }
+      if (i < 3) {
+        ctx.moveTo(tx, rimY);
+        ctx.lineTo(at(midW, (i + 0.5) / 3), midY);
+      }
+    }
+    for (let j = 0; j < 3; j++) {
+      const mx = at(midW, (j + 0.5) / 3);
+      ctx.moveTo(mx, midY);
+      ctx.lineTo(at(botW, j / 3), botY);
+      ctx.moveTo(mx, midY);
+      ctx.lineTo(at(botW, (j + 1) / 3), botY);
+    }
+    ctx.moveTo(at(botW, 0), botY);
+    ctx.lineTo(at(botW, 1), botY);
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.strokeStyle = PAPER;
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // iron last, over the mesh
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 13;
+    ctx.beginPath();
+    ctx.moveTo(frontX, rimY);
+    ctx.lineTo(backX, rimY);
+    ctx.stroke();
+    ctx.strokeStyle = THEME.rim;
+    ctx.lineWidth = 8;
+    ctx.stroke();
+
+    // the little guy mid-shot, eyes on the ball — mid-frame, clear of
+    // the clock tower and the sun's shoulder of the sky
+    const k = 13;
+    const feetX = 430;
+    drawCreature(ctx, feetX, grassY, k, "watch", 0.001, true);
+    // ghost beats trailing from his hand to the ball on its arc
+    const handX = feetX + 6.6 * k;
+    const handY = grassY - 16.2 * k;
+    const ballX = 672;
+    const ballY = 268;
+    ctx.fillStyle = OUTLINE;
+    for (let i = 1; i <= 5; i++) {
+      const t = i / 6;
+      const gx = handX + (ballX - handX) * t;
+      const gy = handY + (ballY - handY) * (1 - (1 - t) * (1 - t));
+      ctx.globalAlpha = 0.2 + 0.35 * t;
+      ctx.fillRect(gx - 5, gy - 5, 10, 10);
+    }
+    ctx.globalAlpha = 1;
+    drawBall(ctx, ballX, ballY, 40, 2.2);
+
+    // sticker lettering — wordmark and the one line of copy
+    ctx.textAlign = "center";
+    ctx.lineJoin = "round";
+    ctx.font = `700 100px ${DISPLAY}`;
+    ctx.strokeStyle = OUTLINE;
+    ctx.lineWidth = 18;
+    ctx.strokeText("HOOPING", 600, 150);
+    ctx.fillStyle = MUSTARD;
+    ctx.fillText("HOOPING", 600, 150);
+    ctx.font = `600 30px ui-monospace, Menlo, monospace`;
+    ctx.lineWidth = 6;
+    ctx.strokeText("one shot. a miss ends the game.", 600, 205);
+    ctx.fillStyle = PAPER;
+    ctx.fillText("one shot. a miss ends the game.", 600, 205);
+    return cv;
+  };
+
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "development") return;
+    if (!new URLSearchParams(location.search).has("og")) return;
+    let gone = false;
+    (async () => {
+      await document.fonts.ready;
+      if (gone) return;
+      const cv = renderOgCanvas();
+      cv.id = "og-card";
+      // z-index over everything, dev badge included — the screenshot
+      // must be the card and nothing else
+      cv.style.cssText =
+        "position:fixed;left:0;top:0;width:1200px;height:630px;z-index:2147483647";
+      document.body.appendChild(cv);
+    })();
+    return () => {
+      gone = true;
+      document.getElementById("og-card")?.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // a verdict press: completes a running choreography, else advances —
   // so an impatient double-tap reads skip + run it back
