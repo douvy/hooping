@@ -2811,7 +2811,7 @@ export function Hoop() {
             popRef.current = {
               text:
                 depth === LEVELS.length
-                  ? "MOGGER'S MOG"
+                  ? "GAME WINNER"
                   : milestone
                     ? `${bucketsRef.current} BUCKETS`
                     : firstEver
@@ -2824,9 +2824,11 @@ export function Hoop() {
                             ? "SHOOTERS SHOOT"
                             : banked
                               ? "BANK'S OPEN"
-                              : streak >= 2
-                                ? `SWISH ×${streak}`
-                                : "SWISH",
+                              : depth === 3
+                                ? "MOGGER'S MOG"
+                                : streak >= 2
+                                  ? `SWISH ×${streak}`
+                                  : "SWISH",
               at: now,
               color:
                 depth === LEVELS.length || newBestRef.current || milestone
