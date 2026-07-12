@@ -548,7 +548,7 @@ export default function VerdictCard({
               className="absolute -top-2 left-1/2 h-4 w-10 -translate-x-1/2 rotate-[4deg] rounded-[1px] bg-[#eae2cb]/80"
             />
             <p className="font-hand text-xl leading-tight text-foreground">
-              all {LEVELS.length} levels, one ball, no misses.
+              {LEVELS.length} for {LEVELS.length}. no misses.
               <br />
               {wins > 1
                 ? `that's banner ${wins} in the rafters.`

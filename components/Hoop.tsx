@@ -4957,7 +4957,9 @@ export function Hoop() {
         {phase === "cleared" ? (
           <span>level {levelIdx + 1} down</span>
         ) : phase === "beat" ? (
-          <span>all {LEVELS.length} cleared, one ball</span>
+          <span>
+            {LEVELS.length} for {LEVELS.length}
+          </span>
         ) : phase === "dead" && last ? (
           <span>{autopsy(last)}</span>
         ) : practiceLeft > 0 ? (

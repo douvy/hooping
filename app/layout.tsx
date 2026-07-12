@@ -28,7 +28,7 @@ const caveat = Caveat({
 });
 
 const description =
-  "Six trick shots, one ball. Make it and move up, miss once and you start over. Same bounce every time — no luck, just touch. How deep can you go?";
+  "Six levels, one ball per level. Make the shot to advance. Miss and you start over.";
 
 // a game, not a document: no pinch zoom mid-aim, edge-to-edge on notched
 // phones (safe-area padding lives on the two chrome bars), browser chrome
